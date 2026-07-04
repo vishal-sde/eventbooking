@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Discover events and reserve your seats with Evently.">
+    <title>Evently | Find your next experience</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="site-header">
+    <a class="brand" href="#home" aria-label="Evently home"><span class="brand-mark">E</span>Evently</a>
+    <nav class="main-nav" aria-label="Main navigation">
+        <a href="#events">Events</a>
+        <a href="#dashboard" id="dashboardLink" class="hidden">My bookings</a>
+        <a href="#admin" id="adminLink" class="hidden">Admin</a>
+    </nav>
+    <div class="auth-actions" id="guestActions">
+        <button class="button button-ghost" data-open="loginModal">Log in</button>
+        <button class="button button-dark" data-open="registerModal">Get started</button>
+    </div>
+    <div class="profile-menu hidden" id="profileMenu">
+        <button class="avatar" id="avatarButton" aria-label="Account menu">U</button>
+        <div class="profile-copy"><strong id="profileName"></strong><span id="profileRole"></span></div>
+        <button class="button button-ghost compact" id="logoutButton">Log out</button>
+    </div>
+</header>
+
+<main>
+    <section class="hero" id="home">
+        <div class="hero-orb orb-one"></div><div class="hero-orb orb-two"></div>
+        <div class="hero-content">
+            <span class="eyebrow">Moments worth showing up for</span>
+            <h1>Find your next<br><em>great experience.</em></h1>
+            <p>Discover local events, reserve seats in seconds, and keep every plan in one simple place.</p>
+            <div class="hero-actions">
+                <a class="button button-primary large" href="#events">Explore events</a>
+                <button class="button button-light large" data-open="registerModal" id="heroRegisterBtn">Create account</button>
+            </div>
+        </div>
+        <aside class="spotlight-card" id="spotlightCard">
+            <div class="spotlight-date"><span>UP</span><strong>NEXT</strong></div>
+            <div><span class="tag">Featured event</span><h2>Loading events...</h2><p>Fresh experiences are on the way.</p></div>
+        </aside>
+    </section>
+
+    <section class="section events-section" id="events">
+        <div class="section-heading">
+            <div><span class="eyebrow dark">Curated for you</span><h2>Upcoming events</h2></div>
+            <div class="event-tools">
+                <label class="search-box"><span aria-hidden="true">⌕</span><input id="eventSearch" type="search" placeholder="Search events or venues"></label>
+                <select id="availabilityFilter" aria-label="Filter by availability"><option value="0">All availability</option><option value="1">Seats available</option><option value="5">5+ seats</option></select>
+            </div>
+        </div>
+        <div class="event-grid" id="eventGrid"></div>
+        <div class="empty-state hidden" id="eventsEmpty"><strong>No events found</strong><span>Try changing your search or check back soon.</span></div>
+    </section>
+
+    <section class="section dashboard-section hidden" id="dashboard">
+        <div class="section-heading"><div><span class="eyebrow dark">Your plans</span><h2>My bookings</h2></div><button class="button button-outline" id="refreshBookings">Refresh</button></div>
+        <div class="stats-row">
+            <article><span>Confirmed</span><strong id="confirmedCount">0</strong></article>
+            <article><span>Seats reserved</span><strong id="seatCount">0</strong></article>
+            <article><span>Total booked</span><strong id="spentAmount">₹0</strong></article>
+        </div>
+        <div class="booking-list" id="bookingList"></div>
+    </section>
+
+    <section class="section admin-section hidden" id="admin">
+        <div class="section-heading"><div><span class="eyebrow dark">Control room</span><h2>Event management</h2></div></div>
+        <div class="admin-layout">
+            <form class="panel event-form" id="eventForm">
+                <div class="panel-heading"><h3 id="eventFormTitle">Create an event</h3><button type="button" class="text-button hidden" id="cancelEdit">Cancel edit</button></div>
+                <label>Event name<input name="name" required maxlength="120" placeholder="Design conference"></label>
+                <label>Venue<input name="venue" required maxlength="160" placeholder="Convention Centre"></label>
+                <label>Date and time<input name="eventDate" type="datetime-local" required></label>
+                <div class="form-row">
+                    <label>Total seats<input name="totalSeats" type="number" required min="1" max="10000" value="100"></label>
+                    <label>Ticket price (₹)<input name="ticketPrice" type="number" required min="0" step="0.01" value="0"></label>
+                </div>
+                <button class="button button-primary full" type="submit" id="eventSubmit">Publish event</button>
+            </form>
+            <div class="panel admin-events"><div class="panel-heading"><h3>Published events</h3><span id="adminEventCount">0 events</span></div><div id="adminEventList"></div></div>
+        </div>
+    </section>
+</main>
+
+<footer><a class="brand inverse" href="#home"><span class="brand-mark">E</span>Evently</a><p>Make room for memorable moments.</p><span>© 2026 Evently</span></footer>
+
+<div class="modal" id="loginModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Welcome back</span><h2>Log in to Evently</h2><p>Use your email and password to manage bookings.</p><form id="loginForm"><label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label><label>Password<input type="password" name="password" required autocomplete="current-password" placeholder="Your password"></label><button class="button button-primary full" type="submit">Log in</button></form><small>New here? <button class="text-button" data-switch="registerModal">Create an account</button></small></div></div>
+
+<div class="modal" id="registerModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Join Evently</span><h2>Create your account</h2><form id="registerForm"><label>Full name<input name="name" required placeholder="Your name"></label><label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label><label>Phone<input name="phone" required pattern="[+]?[0-9]{10,15}" placeholder="9876543210"></label><label>Password<input type="password" name="password" required minlength="8" maxlength="72" autocomplete="new-password" placeholder="At least 8 characters"></label><button class="button button-primary full" type="submit">Create account</button></form><small>Already registered? <button class="text-button" data-switch="loginModal">Log in</button></small></div></div>
+
+<div class="modal" id="bookingModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Reserve your place</span><h2 id="bookingEventName">Book event</h2><p id="bookingEventMeta"></p><form id="bookingForm"><input type="hidden" name="eventId"><label>Number of seats<input type="number" name="seatsRequired" min="1" max="10" value="1" required></label><div class="price-preview"><span>Estimated total</span><strong id="bookingTotal">₹0</strong></div><button class="button button-primary full" type="submit">Confirm booking</button></form></div></div>
+
+<div class="toast-region" id="toastRegion" aria-live="polite"></div>
+<script src="/js/app.js"></script>
+</body>
+</html>

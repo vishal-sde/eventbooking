@@ -1,0 +1,287 @@
+package com.eventbooking.service;
+
+import com.eventbooking.dto.UserDto;
+import com.eventbooking.entity.Role;
+import com.eventbooking.entity.User;
+import com.eventbooking.exception.DuplicateResourceException;
+import com.eventbooking.exception.ResourceNotFoundException;
+import com.eventbooking.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("UserService")
+class UserServiceTest {
+
+    @Mock private UserRepository userRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+
+    @InjectMocks
+    private UserService userService;
+
+    private User testUser;
+
+    @BeforeEach
+    void setUp() {
+        testUser = User.builder()
+                .id(1L)
+                .name("John Doe")
+                .email("john@example.com")
+                .phone("9876543210")
+                .password("$2a$10$hashedpassword")
+                .role(Role.USER)
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    // ── create() ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("create()")
+    class Create {
+
+        @Test
+        @DisplayName("creates user successfully and returns response DTO")
+        void createsUserSuccessfully() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("John Doe")
+                    .email("john@example.com")
+                    .phone("9876543210")
+                    .password("password123")
+                    .build();
+
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(passwordEncoder.encode("password123")).thenReturn("$2a$10$hashed");
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            UserDto.Response response = userService.create(request);
+
+            assertThat(response).isNotNull();
+            assertThat(response.getName()).isEqualTo("John Doe");
+            assertThat(response.getEmail()).isEqualTo("john@example.com");
+            assertThat(response.getRole()).isEqualTo(Role.USER);
+            verify(userRepository).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("throws DuplicateResourceException when email already exists")
+        void throwsOnDuplicateEmail() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("Jane Doe")
+                    .email("john@example.com")
+                    .phone("9876543210")
+                    .password("password123")
+                    .build();
+
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
+
+            assertThatThrownBy(() -> userService.create(request))
+                    .isInstanceOf(DuplicateResourceException.class)
+                    .hasMessageContaining("already exists");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("normalises email to lowercase before saving")
+        void normalisesEmailToLowercase() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("John Doe")
+                    .email("JOHN@EXAMPLE.COM")
+                    .phone("9876543210")
+                    .password("password123")
+                    .build();
+
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            userService.create(request);
+
+            // Verify save was called with lowercased email
+            verify(userRepository).save(argThat(u ->
+                    u.getEmail().equals("john@example.com")
+            ));
+        }
+
+        @Test
+        @DisplayName("trims whitespace from name and email before saving")
+        void trimsWhitespace() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("  John Doe  ")
+                    .email("  john@example.com  ")
+                    .phone("9876543210")
+                    .password("password123")
+                    .build();
+
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            userService.create(request);
+
+            verify(userRepository).save(argThat(u ->
+                    u.getName().equals("John Doe") && u.getEmail().equals("john@example.com")
+            ));
+        }
+
+        @Test
+        @DisplayName("always assigns USER role — never ADMIN — on registration")
+        void alwaysAssignsUserRole() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("Hacker")
+                    .email("hacker@example.com")
+                    .phone("9876543210")
+                    .password("password123")
+                    .build();
+
+            when(userRepository.existsByEmail("hacker@example.com")).thenReturn(false);
+            when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            userService.create(request);
+
+            verify(userRepository).save(argThat(u ->
+                    u.getRole() == Role.USER
+            ));
+        }
+
+        @Test
+        @DisplayName("encodes password before saving — never stores plaintext")
+        void encodesPassword() {
+            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
+                    .name("John Doe")
+                    .email("john@example.com")
+                    .phone("9876543210")
+                    .password("plaintext123")
+                    .build();
+
+            when(userRepository.existsByEmail(any())).thenReturn(false);
+            when(passwordEncoder.encode("plaintext123")).thenReturn("$2a$10$encoded");
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            userService.create(request);
+
+            verify(userRepository).save(argThat(u ->
+                    u.getPassword().equals("$2a$10$encoded")
+                            && !u.getPassword().equals("plaintext123")
+            ));
+        }
+    }
+
+    // ── get() ─────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("get()")
+    class Get {
+
+        @Test
+        @DisplayName("returns user DTO when user found")
+        void returnsUserWhenFound() {
+            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+
+            UserDto.Response response = userService.get(1L);
+
+            assertThat(response.getId()).isEqualTo(1L);
+            assertThat(response.getName()).isEqualTo("John Doe");
+            assertThat(response.getEmail()).isEqualTo("john@example.com");
+        }
+
+        @Test
+        @DisplayName("throws ResourceNotFoundException when user not found")
+        void throwsWhenNotFound() {
+            when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> userService.get(99L))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("99");
+        }
+    }
+
+    // ── list() ────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("list()")
+    class ListUsers {
+
+        @Test
+        @DisplayName("returns all users as response DTOs")
+        void returnsAllUsers() {
+            User secondUser = User.builder()
+                    .id(2L).name("Jane Doe")
+                    .email("jane@example.com")
+                    .phone("9876543211")
+                    .role(Role.USER)
+                    .build();
+
+            when(userRepository.findAll()).thenReturn(List.of(testUser, secondUser));
+
+            List<UserDto.Response> responses = userService.list();
+
+            assertThat(responses).hasSize(2);
+            assertThat(responses).extracting(UserDto.Response::getEmail)
+                    .containsExactlyInAnyOrder("john@example.com", "jane@example.com");
+        }
+
+        @Test
+        @DisplayName("returns empty list when no users exist")
+        void returnsEmptyList() {
+            when(userRepository.findAll()).thenReturn(List.of());
+
+            List<UserDto.Response> responses = userService.list();
+
+            assertThat(responses).isEmpty();
+        }
+    }
+
+    // ── getByEmail() ──────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getByEmail()")
+    class GetByEmail {
+
+        @Test
+        @DisplayName("returns user DTO for valid email")
+        void returnsUserForEmail() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(testUser));
+
+            UserDto.Response response = userService.getByEmail("john@example.com");
+
+            assertThat(response.getEmail()).isEqualTo("john@example.com");
+        }
+
+        @Test
+        @DisplayName("normalises email to lowercase before lookup")
+        void normalisesEmailForLookup() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(testUser));
+
+            userService.getByEmail("JOHN@EXAMPLE.COM");
+
+            verify(userRepository).findByEmail("john@example.com");
+        }
+
+        @Test
+        @DisplayName("throws ResourceNotFoundException when email not found")
+        void throwsWhenEmailNotFound() {
+            when(userRepository.findByEmail("unknown@example.com")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> userService.getByEmail("unknown@example.com"))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+}

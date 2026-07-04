@@ -1,0 +1,14 @@
+target/
+.git/
+.idea/
+.github/
+.agents/
+.mvn/wrapper/maven-wrapper.jar
+*.log
+app.log
+.env
+.env.*
+HELP.md
+README.md
+.vscode/
+*.iml
