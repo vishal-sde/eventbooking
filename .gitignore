@@ -35,4 +35,10 @@ build/
 ### Environment / secrets ###
 .env
 .env.*
-!.env
+!.env.example
+
+### Docker debug artifacts ###
+app-debug.jar
+debug-output.txt
+*.jar
+!.mvn/**/*.jar
