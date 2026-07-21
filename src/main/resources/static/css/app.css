@@ -495,6 +495,46 @@ a{
     background:#fbfcf9;
     outline:none
 }
+.password-control{
+    position:relative;
+    display:block
+}
+.password-control input{
+    width:100%;
+    padding-right:48px
+}
+.password-toggle{
+    position:absolute;
+    right:7px;
+    top:50%;
+    width:36px;
+    height:36px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:var(--muted);
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+    transform:translateY(-50%)
+}
+.password-toggle:hover,.password-toggle[aria-pressed="true"]{
+    background:#eef3e3;
+    color:var(--green)
+}
+.password-toggle:focus-visible{
+    outline:2px solid #8eaa35;
+    outline-offset:2px
+}
+.password-toggle svg{
+    width:20px;
+    height:20px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.9;
+    stroke-linecap:round;
+    stroke-linejoin:round
+}
 .event-form input:focus,.modal-card input:focus{
     border-color:#8eaa35;
     box-shadow:0 0 0 3px rgba(215,244,91,.25)

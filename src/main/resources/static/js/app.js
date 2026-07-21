@@ -45,6 +45,41 @@ function setBusy(form, busy) {
     button.textContent = busy ? "Please wait..." : button.dataset.label;
 }
 
+function debounce(fn, delay = 250) {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+}
+
+function resetPasswordToggles(root = document) {
+    $$("[data-password-toggle]", root).forEach(button => {
+        const input = button.closest(".password-control")?.querySelector("input");
+        if (!input) return;
+        input.type = "password";
+        button.setAttribute("aria-label", "Show password");
+        button.setAttribute("aria-pressed", "false");
+        button.title = "Show password";
+    });
+}
+
+function setupPasswordToggles() {
+    document.addEventListener("click", event => {
+        const button = event.target.closest("[data-password-toggle]");
+        if (!button) return;
+        const input = button.closest(".password-control")?.querySelector("input");
+        if (!input) return;
+        const showPassword = input.type === "password";
+        input.type = showPassword ? "text" : "password";
+        const label = showPassword ? "Hide password" : "Show password";
+        button.setAttribute("aria-label", label);
+        button.setAttribute("aria-pressed", String(showPassword));
+        button.title = label;
+        input.focus({ preventScroll: true });
+    });
+}
+
 function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
@@ -58,6 +93,7 @@ function closeModals() {
         modal.classList.remove("open");
         modal.setAttribute("aria-hidden", "true");
     });
+    resetPasswordToggles();
 }
 
 function updateSessionUi() {
@@ -321,8 +357,17 @@ $("#loginForm").addEventListener("submit", async event => {
 });
 
 $("#registerForm").addEventListener("submit", async event => {
-    event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
+    event.preventDefault(); const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form));
+    if (data.password !== data.confirmPassword) {
+        form.elements.confirmPassword.setCustomValidity("Passwords do not match");
+        form.reportValidity();
+        form.elements.confirmPassword.setCustomValidity("");
+        form.elements.confirmPassword.focus();
+        return;
+    }
+    delete data.confirmPassword;
+    setBusy(form, true);
     try { await api("/api/users", { method: "POST", auth: false, body: JSON.stringify(data) }); await login(data.email, data.password); form.reset(); }
     catch (error) { toast(error.message, "error"); }
     finally { setBusy(form, false); }
@@ -349,7 +394,8 @@ $("#eventForm").addEventListener("submit", async event => {
     finally { setBusy(form, false); }
 });
 
-$("#eventSearch").addEventListener("input", loadEvents);
+const debouncedLoadEvents = debounce(loadEvents);
+$("#eventSearch").addEventListener("input", debouncedLoadEvents);
 $("#availabilityFilter").addEventListener("change", loadEvents);
 $("#bookingForm").elements.seatsRequired.addEventListener("input", updateBookingTotal);
 $("#logoutButton").addEventListener("click", () => logout());
@@ -357,6 +403,7 @@ $("#refreshBookings").addEventListener("click", loadBookings);
 $("#cancelEdit").addEventListener("click", resetEventForm);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeModals(); });
 
+setupPasswordToggles();
 updateSessionUi();
 loadEvents();
 restoreSession().then(renderAdminEvents);
