@@ -8,12 +8,7 @@ import org.springframework.data.domain.Page;
 
 import java.util.List;
 
-/**
- * Generic wrapper for paginated responses.
- * Tells the client: here's your data, here's the page info.
- *
- * Generic type T means it works for any entity — events, bookings, etc.
- */
+
 @Getter
 @Builder
 @NoArgsConstructor

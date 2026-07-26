@@ -1,6 +1,7 @@
 package com.eventbooking.service;
 
 import com.eventbooking.dto.EventDto;
+import com.eventbooking.entity.Category;
 import com.eventbooking.entity.Event;
 import com.eventbooking.entity.BookingStatus;
 import com.eventbooking.entity.Status;
@@ -15,7 +16,8 @@ import com.eventbooking.dto.PagedResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import java.util.List;
+
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -29,11 +31,15 @@ public class EventService {
         Event event = Event.builder()
                 .name(request.getName().trim())
                 .venue(request.getVenue().trim())
+                .city(request.getCity() != null ? request.getCity().trim() : null)
                 .eventDate(request.getEventDate())
                 .totalSeats(request.getTotalSeats())
                 .availableSeats(request.getTotalSeats())
                 .ticketPrice(request.getTicketPrice())
                 .status(Status.UPCOMING)
+                .category(request.getCategory() != null ? request.getCategory() : Category.OTHER)
+                .imageUrl(request.getImageUrl())
+                .description(request.getDescription())
                 .build();
         return EventDto.Response.from(eventRepository.save(event));
     }
@@ -48,6 +54,11 @@ public class EventService {
             String searchTerm,
             Status status,
             Integer minSeats,
+            Category category,
+            String city,
+            Double minPrice,
+            Double maxPrice,
+            LocalDateTime dateFrom,
             int page,
             int size,
             String sortBy,
@@ -67,13 +78,15 @@ public class EventService {
 
         // Pass null for empty strings so the query ignores that filter
         String search = (searchTerm == null || searchTerm.isBlank()) ? null : searchTerm.trim();
+        String cityFilter = (city == null || city.isBlank()) ? null : city.trim();
 
         Page<EventDto.Response> results = eventRepository
-                .search(search, status, minSeats, pageable)
+                .search(search, status, minSeats, category, cityFilter, minPrice, maxPrice, dateFrom, pageable)
                 .map(EventDto.Response::from);
 
         return PagedResponse.from(results);
     }
+
     @Transactional
     public EventDto.Response update(Long id, EventDto.UpdateRequest request) {
         Event event = findEvent(id);
@@ -82,8 +95,14 @@ public class EventService {
         }
         event.setName(request.getName().trim());
         event.setVenue(request.getVenue().trim());
+        event.setCity(request.getCity() != null ? request.getCity().trim() : null);
         event.setEventDate(request.getEventDate());
         event.setTicketPrice(request.getTicketPrice());
+        if (request.getCategory() != null) {
+            event.setCategory(request.getCategory());
+        }
+        event.setImageUrl(request.getImageUrl());
+        event.setDescription(request.getDescription());
         return EventDto.Response.from(eventRepository.save(event));
     }
 
@@ -100,6 +119,11 @@ public class EventService {
             booking.setCancelledAt(java.time.LocalDateTime.now());
         });
         return EventDto.Response.from(eventRepository.save(event));
+    }
+
+    @Transactional(readOnly = true)
+    public Category[] categories() {
+        return Category.values();
     }
 
     private Event findEvent(Long id) {

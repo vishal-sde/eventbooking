@@ -36,6 +36,21 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+  # SMTP — disabled by default (app.mail.enabled) so the app boots fine with no mail server configured.
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
   flyway:
     enabled: true
@@ -44,9 +59,18 @@ spring:
 
 # HTTP server
 server:
-  port: ${PORT:8080}
+  port: ${PORT:8081}
   servlet:
     context-path: /
+
+# The mail starter auto-registers a health check that tries to connect to
+# the SMTP server on every /actuator/health poll. EmailService already
+# handles send failures gracefully without breaking the app, so a flaky or
+# unreachable mail server should never flip the container to "unhealthy".
+management:
+  health:
+    mail:
+      enabled: false
 
 app:
   jwt:
@@ -56,6 +80,11 @@ app:
     email: ${ADMIN_EMAIL:admin@gmail.com}
     password: ${ADMIN_PASSWORD}
     name: ${ADMIN_NAME:Administrator}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:Evently <no-reply@evently.app>}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
   rate-limit:
     login:
       capacity: ${RATE_LIMIT_LOGIN_CAPACITY:5}       # max attempts...

@@ -17,6 +17,11 @@ WORKDIR /app
 # Run as non-root
 RUN addgroup --system app && adduser --system --ingroup app app
 
+# HEALTHCHECK below needs wget — don't assume the base image has it
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /build/target/*.jar app.jar
 RUN chown app:app app.jar
 USER app

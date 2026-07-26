@@ -32,17 +32,7 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.UNAUTHORIZED, "Invalid email or password", request, Map.of());
     }
 
-    /**
-     * Thrown manually from services/controllers when the caller is
-     * authenticated but not allowed to act on a resource they don't own
-     * (e.g. viewing/cancelling someone else's booking). This is distinct
-     * from Spring Security's own AccessDeniedHandler bean in SecurityConfig,
-     * which only fires for hasRole(...)-style authorization decisions made
-     * by the AuthorizationFilter — exceptions thrown inside a controller/
-     * service are resolved here, inside the DispatcherServlet, before they
-     * would ever reach that filter-level handler. Without this handler they
-     * fell through to the generic Exception.class handler below as a 500.
-     */
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiError> accessDenied(AccessDeniedException ex, HttpServletRequest request) {
         return response(HttpStatus.FORBIDDEN, ex.getMessage(), request, Map.of());
@@ -94,16 +84,7 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, "The resource is busy; retry the request", request, Map.of());
     }
 
-    /**
-     * Catch-all for anything not handled above — bugs, NPEs, unexpected
-     * runtime failures. Without this, such exceptions fell through to Spring
-     * Boot's default error page/JSON, which has a different shape than every
-     * other error response from this API and (depending on config) can leak
-     * exception class names or stack traces to the client.
-     *
-     * Full details are logged server-side for debugging; the client only
-     * ever sees a generic message.
-     */
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);

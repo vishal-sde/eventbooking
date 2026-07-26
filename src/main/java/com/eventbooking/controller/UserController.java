@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +21,21 @@ public class UserController {
     @ResponseStatus(HttpStatus.CREATED)
     public UserDto.Response create(@Valid @RequestBody UserDto.CreateRequest request) {
         return userService.create(request);
+    }
+
+    @GetMapping("/me")
+    public UserDto.Response me(Authentication authentication) {
+        return userService.getByEmail(authentication.getName());
+    }
+
+    @PutMapping("/me")
+    public UserDto.Response updateProfile(Authentication authentication, @Valid @RequestBody UserDto.UpdateProfileRequest request) {
+        return userService.updateProfile(authentication.getName(), request);
+    }
+
+    @PutMapping("/me/password")
+    public void changePassword(Authentication authentication, @Valid @RequestBody UserDto.PasswordChangeRequest request) {
+        userService.changePassword(authentication.getName(), request);
     }
 
     @GetMapping("/{id}")

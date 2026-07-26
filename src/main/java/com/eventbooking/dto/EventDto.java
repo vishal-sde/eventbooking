@@ -1,5 +1,6 @@
 package com.eventbooking.dto;
 
+import com.eventbooking.entity.Category;
 import com.eventbooking.entity.Event;
 import com.eventbooking.entity.Status;
 import jakarta.validation.constraints.*;
@@ -21,6 +22,8 @@ public class EventDto {
         @NotBlank(message = "Venue is required")
         private String venue;
 
+        private String city;
+
         @NotNull(message = "Event date is required")
         @Future(message = "Event date must be in future")
         private LocalDateTime eventDate;
@@ -33,6 +36,14 @@ public class EventDto {
         @NotNull(message = "Ticket price is required")
         @DecimalMin(value = "0.0",message = "Price cannot be negative")
         private Double ticketPrice;
+
+        private Category category;
+
+        @Size(max = 500, message = "Image URL is too long")
+        private String imageUrl;
+
+        @Size(max = 4000, message = "Description is too long")
+        private String description;
     }
 
     @Getter
@@ -47,6 +58,8 @@ public class EventDto {
         @NotBlank(message = "Venue is required")
         private String venue;
 
+        private String city;
+
         @NotNull(message = "Event date is required")
         @Future(message = "Event date must be in the future")
         private LocalDateTime eventDate;
@@ -54,6 +67,14 @@ public class EventDto {
         @NotNull(message = "Ticket price is required")
         @DecimalMin(value = "0.0", message = "Price cannot be negative")
         private Double ticketPrice;
+
+        private Category category;
+
+        @Size(max = 500, message = "Image URL is too long")
+        private String imageUrl;
+
+        @Size(max = 4000, message = "Description is too long")
+        private String description;
     }
 
     @Getter
@@ -66,11 +87,16 @@ public class EventDto {
         private Long id;
         private String name;
         private String venue;
+        private String city;
         private LocalDateTime eventDate;
         private Integer totalSeats;
         private Integer availableSeats;
         private Double ticketPrice;
         private Status status;
+        private Category category;
+        private String imageUrl;
+        private String description;
+        private String cancellationPolicy;
         private Long version;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -81,11 +107,16 @@ public class EventDto {
                     .id(event.getId())
                     .name(event.getName())
                     .venue(event.getVenue())
+                    .city(event.getCity())
                     .eventDate(event.getEventDate())
                     .totalSeats(event.getTotalSeats())
                     .availableSeats(event.getAvailableSeats())
                     .ticketPrice(event.getTicketPrice())
                     .status(event.getStatus())
+                    .category(event.getCategory())
+                    .imageUrl(event.getImageUrl())
+                    .description(event.getDescription())
+                    .cancellationPolicy("Full refund up to 48 hours before the event. No refunds within 48 hours of the event start time.")
                     .version(event.getVersion())
                     .createdAt(event.getCreatedAt())
                     .updatedAt(event.getUpdatedAt())

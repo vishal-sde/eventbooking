@@ -36,6 +36,36 @@ public class UserDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class UpdateProfileRequest {
+
+        @NotBlank(message = "Name is required")
+        private String name;
+
+        @NotBlank(message = "Phone number is required")
+        @Pattern(regexp = "^[+]?[0-9]{10,15}$",message = "Invalid phone number")
+        private String phone;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PasswordChangeRequest {
+
+        @NotBlank(message = "Current password is required")
+        private String currentPassword;
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 8, max = 72, message = "Password must contain 8 to 72 characters")
+        private String newPassword;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class Response {
         private Long id;
         private String name;

@@ -41,4 +41,4 @@ build/
 app-debug.jar
 debug-output.txt
 *.jar
-!.mvn/**/*.jar
+!.mvn/**/*.jardocke

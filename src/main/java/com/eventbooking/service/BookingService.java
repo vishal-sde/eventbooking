@@ -28,13 +28,9 @@ public class BookingService {
     private final UserRepository userRepository;
     private final EventRepository eventRepository;
     private final DistributedLockService lockService;
+    private final EmailService emailService;
 
-    /**
-     * NO @Transactional here — intentional.
-     * Lock must be acquired BEFORE the transaction opens.
-     * If @Transactional were here, the DB read would happen before
-     * the lock is held — race condition window exists.
-     */
+
     public BookingDto.Response create(BookingDto.CreateRequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -48,13 +44,7 @@ public class BookingService {
         );
     }
 
-    /**
-     * @Transactional IS here — inside the lock.
-     * @Version on Event is the safety net:
-     * if two threads somehow both pass the Redis lock,
-     * only one succeeds writing. The other gets
-     * ObjectOptimisticLockingFailureException → 409 to client.
-     */
+
     @Transactional
     protected BookingDto.Response processCreate(BookingDto.CreateRequest request, User user) {
         // Fresh read inside transaction — guaranteed to see latest data
@@ -195,7 +185,9 @@ public class BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setExpiresAt(null); // clear expiry once confirmed
         log.info("Booking confirmed: {}", bookingRef);
-        return BookingDto.Response.from(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        emailService.sendBookingConfirmation(saved);
+        return BookingDto.Response.from(saved);
     }
 
 

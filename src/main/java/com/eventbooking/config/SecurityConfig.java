@@ -121,9 +121,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/login", "/api/auth/google").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/events/*/reviews").authenticated()
                         .requestMatchers("/api/auth/**").authenticated()
+                        .requestMatchers("/api/users/me", "/api/users/me/**").authenticated()
+                        .requestMatchers("/api/wishlist/**").authenticated()
                         .requestMatchers("/api/events/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/bookings/**").authenticated()

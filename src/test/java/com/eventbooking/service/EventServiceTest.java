@@ -26,18 +26,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for EventService.
- *
- * KEY CONCEPT — why we mock here:
- * We're testing EventService logic in ISOLATION.
- * We don't want a real DB, real Redis, or real anything else.
- * Mockito replaces dependencies with fakes we control.
- *
- * @ExtendWith(MockitoExtension.class) — activates Mockito annotations
- * @Mock — creates a fake implementation of the interface
- * @InjectMocks — creates the real EventService, injects the mocks into it
- */
+
 @ExtendWith(MockitoExtension.class)
 class EventServiceTest {
 
@@ -196,11 +185,11 @@ class EventServiceTest {
         @DisplayName("returns paginated results")
         void returnsPaginatedResults() {
             var pageResult = new PageImpl<>(List.of(upcomingEvent));
-            when(eventRepository.search(any(), any(), any(), any(Pageable.class)))
+            when(eventRepository.search(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(pageResult);
 
             PagedResponse<EventDto.Response> response =
-                    eventService.search(null, null, null, 0, 10, "eventDate", "asc");
+                    eventService.search(null, null, null, null, null, null, null, null, 0, 10, "eventDate", "asc");
 
             assertThat(response.getContent()).hasSize(1);
             assertThat(response.getTotalElements()).isEqualTo(1);
@@ -210,28 +199,28 @@ class EventServiceTest {
         @DisplayName("passes null for blank search term")
         void passesNullForBlankSearch() {
             var pageResult = new PageImpl<>(List.of(upcomingEvent));
-            when(eventRepository.search(isNull(), any(), any(), any(Pageable.class)))
+            when(eventRepository.search(isNull(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(pageResult);
 
             // Blank string should be treated as null so the query ignores it
             PagedResponse<EventDto.Response> response =
-                    eventService.search("   ", null, null, 0, 10, "eventDate", "asc");
+                    eventService.search("   ", null, null, null, null, null, null, null, 0, 10, "eventDate", "asc");
 
             assertThat(response.getContent()).hasSize(1);
             // Verify null was passed for search, not the blank string
-            verify(eventRepository).search(isNull(), any(), any(), any(Pageable.class));
+            verify(eventRepository).search(isNull(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
         }
 
         @Test
         @DisplayName("defaults to eventDate sort for invalid sort field")
         void defaultsToEventDateForInvalidSortField() {
             var pageResult = new PageImpl<>(List.of(upcomingEvent));
-            when(eventRepository.search(any(), any(), any(), any(Pageable.class)))
+            when(eventRepository.search(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(pageResult);
 
             // "hackedField" is not in the allowed list — should default to eventDate
             assertThatNoException().isThrownBy(() ->
-                    eventService.search(null, null, null, 0, 10, "hackedField", "asc")
+                    eventService.search(null, null, null, null, null, null, null, null, 0, 10, "hackedField", "asc")
             );
         }
 
@@ -239,14 +228,14 @@ class EventServiceTest {
         @DisplayName("caps page size at 50")
         void capsPageSizeAt50() {
             var pageResult = new PageImpl<>(List.of(upcomingEvent));
-            when(eventRepository.search(any(), any(), any(), any(Pageable.class)))
+            when(eventRepository.search(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(pageResult);
 
             // Request size 1000 — should be capped at 50
-            eventService.search(null, null, null, 0, 1000, "eventDate", "asc");
+            eventService.search(null, null, null, null, null, null, null, null, 0, 1000, "eventDate", "asc");
 
             verify(eventRepository).search(
-                    any(), any(), any(),
+                    any(), any(), any(), any(), any(), any(), any(), any(),
                     argThat(pageable -> pageable.getPageSize() == 50)
             );
         }

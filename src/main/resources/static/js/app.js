@@ -3,7 +3,12 @@ const state = {
     user: null,
     events: [],
     bookings: [],
-    editingEventId: null
+    categories: [],
+    editingEventId: null,
+    activeCategory: "",
+    viewingEventId: null,
+    wishlist: [],
+    wishlistIds: new Set()
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -11,6 +16,12 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" });
 const colors = ["#dceca8", "#c8e5df", "#f0d7ad", "#d8d4ef", "#f1cbc5", "#cee1f2"];
+
+const statusLabels = { UPCOMING: "Upcoming", SOLD_OUT: "Sold out", CANCELLED: "Cancelled", COMPLETED: "Completed" };
+function statusBadge(status) {
+    const cls = `status-${status.toLowerCase().replace("_", "-")}`;
+    return `<span class="status-badge ${cls}">${statusLabels[status] || status}</span>`;
+}
 
 function escapeHtml(value = "") {
     return String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
@@ -94,6 +105,7 @@ function closeModals() {
         modal.setAttribute("aria-hidden", "true");
     });
     resetPasswordToggles();
+    closeSharePopover();
 }
 
 function updateSessionUi() {
@@ -102,6 +114,15 @@ function updateSessionUi() {
     $("#profileMenu").classList.toggle("hidden", !loggedIn);
     $("#dashboardLink").classList.toggle("hidden", !loggedIn);
     $("#dashboard").classList.toggle("hidden", !loggedIn);
+    $("#profileLink").classList.toggle("hidden", !loggedIn);
+    $("#profile").classList.toggle("hidden", !loggedIn);
+    $("#wishlistLink").classList.toggle("hidden", !loggedIn);
+    $("#wishlist").classList.toggle("hidden", !loggedIn);
+    if (loggedIn) {
+        $("#profileEmailField").value = state.user.email;
+        $("#profileForm").elements.name.value = state.user.name;
+        $("#profileForm").elements.phone.value = state.user.phone || "";
+    }
     const heroBtn = document.getElementById("heroRegisterBtn");
     if (heroBtn) heroBtn.classList.toggle("hidden", loggedIn);
     const admin = state.user?.role === "ADMIN";
@@ -119,7 +140,7 @@ async function restoreSession() {
     try {
         state.user = await api("/api/auth/me");
         updateSessionUi();
-        await loadBookings();
+        await Promise.all([loadBookings(), loadWishlist()]);
     } catch {
         logout(false);
     }
@@ -130,8 +151,12 @@ function logout(showToast = true) {
     state.token = null;
     state.user = null;
     state.bookings = [];
+    state.wishlist = [];
+    state.wishlistIds = new Set();
     updateSessionUi();
     renderBookings();
+    renderWishlist();
+    renderEvents();
     if (showToast) toast("You have been logged out");
 }
 
@@ -144,17 +169,124 @@ async function login(email, password) {
     sessionStorage.setItem("evently_token", result.token);
     updateSessionUi();
     closeModals();
-    await loadBookings();
+    await Promise.all([loadBookings(), loadWishlist()]);
     toast(`Welcome, ${state.user.name}`);
 }
 
+async function loadWishlist() {
+    if (!state.user) return;
+    try {
+        state.wishlist = await api("/api/wishlist");
+        state.wishlistIds = new Set(state.wishlist.map(item => item.event.id));
+        renderWishlist();
+        renderEvents();
+    } catch (error) {
+        toast(error.message, "error");
+    }
+}
+
+function renderWishlist() {
+    const grid = $("#wishlistGrid");
+    if (!grid) return;
+    $("#wishlistEmpty").classList.toggle("hidden", state.wishlist.length > 0);
+    grid.innerHTML = state.wishlist.map(item => {
+        const event = item.event;
+        const date = new Date(event.eventDate);
+        const bg = event.imageUrl ? `background-image:url('${escapeHtml(event.imageUrl)}')` : `--card-color:${colors[event.id % colors.length]}`;
+        return `<article class="event-card" data-view="${event.id}">
+            <div class="event-visual ${event.imageUrl ? "has-image" : ""}" style="${bg}">
+                <span class="event-category-tag">${escapeHtml(event.category || "OTHER")}</span>
+                ${statusBadge(event.status)}
+            </div>
+            <div class="event-body">
+                <h3>${escapeHtml(event.name)}</h3>
+                <div class="event-meta"><span>${escapeHtml(event.venue)}${event.city ? " · " + escapeHtml(event.city) : ""}</span><span>•</span><span>${dateTime.format(date)}</span></div>
+                <div class="event-footer">
+                    <div class="event-price"><strong>${event.ticketPrice === 0 ? "Free" : money.format(event.ticketPrice)}</strong><span>${event.availableSeats} seats left</span></div>
+                    <button class="button button-outline" data-wishlist-remove="${event.id}">Remove</button>
+                </div>
+            </div>
+        </article>`;
+    }).join("");
+}
+
+async function toggleWishlist(eventId) {
+    if (!state.user) {
+        toast("Log in to save events to your wishlist", "error");
+        return openModal("loginModal");
+    }
+    const id = Number(eventId);
+    try {
+        if (state.wishlistIds.has(id)) {
+            await api(`/api/wishlist/${id}`, { method: "DELETE" });
+            state.wishlistIds.delete(id);
+            state.wishlist = state.wishlist.filter(item => item.event.id !== id);
+            toast("Removed from wishlist");
+        } else {
+            const saved = await api(`/api/wishlist/${id}`, { method: "POST" });
+            state.wishlistIds.add(id);
+            state.wishlist.unshift(saved);
+            toast("Saved to wishlist");
+        }
+        renderWishlist();
+        renderEvents();
+        if (state.viewingEventId === id) updateWishlistButton(id);
+    } catch (error) {
+        toast(error.message, "error");
+    }
+}
+
+function updateWishlistButton(eventId) {
+    const btn = $("#detailsWishlistButton");
+    if (!btn) return;
+    const saved = state.wishlistIds.has(Number(eventId));
+    btn.textContent = saved ? "♥" : "♡";
+    btn.classList.toggle("active", saved);
+    btn.setAttribute("aria-pressed", String(saved));
+}
+
+async function loadCategories() {
+    try {
+        state.categories = await api("/api/events/categories", { auth: false });
+        $("#categoryChips").innerHTML = `<button type="button" class="chip ${state.activeCategory === "" ? "active" : ""}" data-category="">All</button>` +
+            state.categories.map(category => `<button type="button" class="chip ${state.activeCategory === category ? "active" : ""}" data-category="${category}">${escapeHtml(category.charAt(0) + category.slice(1).toLowerCase())}</button>`).join("");
+        const select = $("#eventFormCategory");
+        if (select) select.innerHTML = state.categories.map(category => `<option value="${category}">${escapeHtml(category.charAt(0) + category.slice(1).toLowerCase())}</option>`).join("");
+    } catch (error) {
+        toast(error.message, "error");
+    }
+}
+
+function showEventSkeletons() {
+    $("#eventsEmpty").classList.add("hidden");
+    $("#eventGrid").innerHTML = Array.from({ length: 6 }).map(() => `
+        <div class="skeleton-card">
+            <div class="skeleton-block visual"></div>
+            <div class="skeleton-body">
+                <div class="skeleton-block line"></div>
+                <div class="skeleton-block line short"></div>
+                <div class="skeleton-block line"></div>
+            </div>
+        </div>`).join("");
+}
+
 async function loadEvents() {
+    showEventSkeletons();
     try {
         const params = new URLSearchParams();
         const term = $("#eventSearch").value.trim();
         const minSeats = $("#availabilityFilter").value;
+        const city = $("#cityFilter").value.trim();
+        const dateFrom = $("#dateFilter").value;
+        const minPrice = $("#minPriceFilter").value;
+        const maxPrice = $("#maxPriceFilter").value;
         if (term) params.set("search", term);
         if (minSeats > 0) params.set("minSeats", minSeats);
+        if (state.activeCategory) params.set("category", state.activeCategory);
+        if (city) params.set("city", city);
+        if (dateFrom) params.set("dateFrom", `${dateFrom}T00:00:00`);
+        if (minPrice) params.set("minPrice", minPrice);
+        if (maxPrice) params.set("maxPrice", maxPrice);
         params.set("size", "50"); // load up to 50 events
 
         const result = await api(`/api/events?${params}`, { auth: false });
@@ -165,6 +297,8 @@ async function loadEvents() {
         renderSpotlight();
     } catch (error) {
         toast(error.message, "error");
+        $("#eventGrid").innerHTML = "";
+        $("#eventsEmpty").classList.remove("hidden");
     }
 }
 
@@ -172,27 +306,168 @@ function filteredEvents() {
     return state.events;
 }
 
+function clearAllFilters() {
+    $("#eventSearch").value = "";
+    $("#cityFilter").value = "";
+    $("#dateFilter").value = "";
+    $("#minPriceFilter").value = "";
+    $("#maxPriceFilter").value = "";
+    $("#availabilityFilter").value = "0";
+    state.activeCategory = "";
+    loadCategories();
+    loadEvents();
+}
+
 function renderEvents() {
     const events = filteredEvents();
     $("#eventsEmpty").classList.toggle("hidden", events.length > 0);
+    if (!events.length) { $("#eventGrid").innerHTML = ""; return; }
     $("#eventGrid").innerHTML = events.map((event, index) => {
         const date = new Date(event.eventDate);
         const bookable = event.status === "UPCOMING" && event.availableSeats > 0 && date > new Date();
-        return `<article class="event-card">
-            <div class="event-visual" style="--card-color:${colors[index % colors.length]}">
-                <div class="date-chip"><strong>${date.getDate()}</strong><span>${date.toLocaleString("en", { month: "short" }).toUpperCase()}</span></div>
-                <span class="availability">${escapeHtml(event.status.replace("_", " "))} · ${event.availableSeats} seats</span>
+        const bg = event.imageUrl ? `background-image:url('${escapeHtml(event.imageUrl)}')` : `--card-color:${colors[index % colors.length]}`;
+        return `<article class="event-card" data-view="${event.id}">
+            <div class="event-visual ${event.imageUrl ? "has-image" : ""}" style="${bg}">
+                <span class="event-category-tag">${escapeHtml(event.category || "OTHER")}</span>
+                <button class="wishlist-toggle card ${state.wishlistIds.has(event.id) ? "active" : ""}" data-wishlist="${event.id}" aria-label="Save to wishlist" type="button">${state.wishlistIds.has(event.id) ? "♥" : "♡"}</button>
+                ${statusBadge(event.status)}
             </div>
             <div class="event-body">
                 <h3>${escapeHtml(event.name)}</h3>
-                <div class="event-meta"><span>${escapeHtml(event.venue)}</span><span>•</span><span>${dateTime.format(date)}</span></div>
+                <div class="event-meta"><span>${escapeHtml(event.venue)}${event.city ? " · " + escapeHtml(event.city) : ""}</span><span>•</span><span>${dateTime.format(date)}</span></div>
                 <div class="event-footer">
-                    <div class="event-price"><strong>${event.ticketPrice === 0 ? "Free" : money.format(event.ticketPrice)}</strong><span>per person</span></div>
+                    <div class="event-price"><strong>${event.ticketPrice === 0 ? "Free" : money.format(event.ticketPrice)}</strong><span>${event.availableSeats} seats left</span></div>
                     <button class="button ${bookable ? "button-dark" : "button-outline"}" data-book="${event.id}" ${bookable ? "" : "disabled"}>${bookable ? "Book now" : "Unavailable"}</button>
                 </div>
             </div>
         </article>`;
     }).join("");
+}
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function toIcsUtc(date) {
+    return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
+}
+
+function buildCalendarLinks(event) {
+    const start = new Date(event.eventDate);
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000); // assume 2hr duration
+    const title = encodeURIComponent(event.name);
+    const location = encodeURIComponent([event.venue, event.city].filter(Boolean).join(", "));
+    const details = encodeURIComponent(event.description || "Booked via Evently");
+    const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${toIcsUtc(start)}/${toIcsUtc(end)}&details=${details}&location=${location}`;
+    const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${title}&startdt=${start.toISOString()}&enddt=${end.toISOString()}&body=${details}&location=${location}`;
+    const ics = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Evently//EN", "BEGIN:VEVENT",
+        `UID:${Date.now()}@evently`, `DTSTAMP:${toIcsUtc(new Date())}`,
+        `DTSTART:${toIcsUtc(start)}`, `DTEND:${toIcsUtc(end)}`,
+        `SUMMARY:${event.name}`, `LOCATION:${[event.venue, event.city].filter(Boolean).join(", ")}`,
+        `DESCRIPTION:${(event.description || "Booked via Evently").replace(/\n/g, " ")}`,
+        "END:VEVENT", "END:VCALENDAR"
+    ].join("\r\n");
+    return { google, outlook, ics };
+}
+
+function openTicket(bookingRef) {
+    const booking = state.bookings.find(b => b.bookingRef === bookingRef);
+    if (!booking) return;
+    const event = state.events.find(e => e.id === booking.eventId) || {};
+    $("#ticketEventName").textContent = booking.eventName;
+    $("#ticketRef").textContent = booking.bookingRef;
+    $("#ticketUser").textContent = booking.userName || state.user?.name || "";
+    $("#ticketVenue").textContent = [event.venue, event.city].filter(Boolean).join(", ") || "—";
+    $("#ticketDate").textContent = event.eventDate ? dateTime.format(new Date(event.eventDate)) : "—";
+    $("#ticketSeats").textContent = booking.seatsBooked;
+
+    const qrPayload = JSON.stringify({ ref: booking.bookingRef, event: booking.eventName, seats: booking.seatsBooked, user: booking.userName });
+    const qr = qrcode(0, "M");
+    qr.addData(qrPayload);
+    qr.make();
+    $("#ticketQr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2 });
+
+    if (event.eventDate) {
+        const links = buildCalendarLinks(event);
+        $("#ticketCalGoogle").href = links.google;
+        $("#ticketCalOutlook").href = links.outlook;
+        $("#ticketCalIcs").onclick = () => {
+            const blob = new Blob([links.ics], { type: "text/calendar" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${booking.bookingRef}.ics`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+    }
+    openModal("ticketModal");
+}
+
+let shareEventContext = null;
+function openSharePopover(anchor, event) {
+    shareEventContext = event;
+    const popover = $("#sharePopover");
+    popover.classList.remove("hidden");
+    const rect = anchor.getBoundingClientRect();
+    popover.style.top = `${window.scrollY + rect.bottom + 8}px`;
+    popover.style.left = `${window.scrollX + rect.left}px`;
+}
+function closeSharePopover() {
+    $("#sharePopover").classList.add("hidden");
+    shareEventContext = null;
+}
+
+function openEventDetails(eventId) {
+    const event = state.events.find(item => item.id === Number(eventId));
+    if (!event) return;
+    state.viewingEventId = event.id;
+    const date = new Date(event.eventDate);
+    const bookable = event.status === "UPCOMING" && event.availableSeats > 0 && date > new Date();
+    $("#detailsImage").style.background = event.imageUrl
+        ? `url('${event.imageUrl}') center/cover no-repeat`
+        : `var(--card-color,#e8efca)`;
+    $("#detailsBadges").innerHTML = statusBadge(event.status);
+    $("#detailsCategory").textContent = event.category || "OTHER";
+    $("#detailsName").textContent = event.name;
+    $("#detailsMeta").textContent = `${event.venue}${event.city ? " · " + event.city : ""}`;
+    $("#detailsDescription").textContent = event.description || "No description provided for this event yet.";
+    $("#detailsVenue").textContent = event.venue;
+    $("#detailsDate").textContent = dateTime.format(date);
+    $("#detailsSeats").textContent = `${event.availableSeats} / ${event.totalSeats}`;
+    $("#detailsPrice").textContent = event.ticketPrice === 0 ? "Free" : money.format(event.ticketPrice);
+    $("#detailsPolicy").textContent = event.cancellationPolicy || "";
+    const bookBtn = $("#detailsBookButton");
+    bookBtn.disabled = !bookable;
+    bookBtn.textContent = bookable ? "Book now" : "Unavailable";
+    updateWishlistButton(event.id);
+    loadReviews(event.id);
+    openModal("eventDetailsModal");
+}
+
+async function loadReviews(eventId) {
+    const list = $("#reviewsList");
+    list.innerHTML = `<p class="empty-hint">Loading reviews…</p>`;
+    try {
+        const summary = await api(`/api/events/${eventId}/reviews`, { auth: false });
+        $("#reviewsSummary").textContent = summary.totalReviews
+            ? `★ ${summary.averageRating.toFixed(1)} · ${summary.totalReviews} review${summary.totalReviews === 1 ? "" : "s"}`
+            : "No reviews yet";
+        list.innerHTML = summary.reviews.length
+            ? summary.reviews.map(r => `<div class="review-item">
+                <div class="review-item-head"><strong>${escapeHtml(r.userName)}</strong><span>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span></div>
+                ${r.comment ? `<p>${escapeHtml(r.comment)}</p>` : ""}
+                <small>${dateTime.format(new Date(r.createdAt))}</small>
+            </div>`).join("")
+            : `<p class="empty-hint">Be the first to review this event.</p>`;
+
+        const event = state.events.find(e => e.id === eventId);
+        const hasConfirmedBooking = state.bookings.some(b => b.eventId === eventId && b.status === "CONFIRMED");
+        const alreadyReviewed = summary.reviews.some(r => r.userId === state.user?.id);
+        const eligible = state.user && event?.status === "COMPLETED" && hasConfirmedBooking && !alreadyReviewed;
+        $("#reviewForm").classList.toggle("hidden", !eligible);
+        $("#reviewForm").dataset.eventId = eventId;
+    } catch (error) {
+        list.innerHTML = `<p class="empty-hint">Could not load reviews.</p>`;
+    }
 }
 
 function renderSpotlight() {
@@ -236,54 +511,82 @@ async function loadBookings() {
 
 function renderBookings() {
     const confirmed = state.bookings.filter(b => b.status === "CONFIRMED");
-    const pending = state.bookings.filter(b => b.status === "PENDING");
 
     $("#confirmedCount").textContent = confirmed.length;
     $("#seatCount").textContent = confirmed.reduce((t, b) => t + b.seatsBooked, 0);
     $("#spentAmount").textContent = money.format(confirmed.reduce((t, b) => t + b.totalAmount, 0));
 
-    if (!state.bookings.length) {
-        $("#bookingList").innerHTML = `<div class="empty-state"><strong>No bookings yet</strong><span>Your confirmed experiences will appear here.</span></div>`;
+    const markup = !state.bookings.length
+        ? `<div class="empty-state"><strong>No bookings yet</strong><span>Your confirmed experiences will appear here.</span></div>`
+        : state.bookings.map(booking => {
+            const isPending  = booking.status === "PENDING";
+            const isCancelled = booking.status === "CANCELLED";
+            const isConfirmed = booking.status === "CONFIRMED";
+
+            // Show expiry countdown for pending bookings
+            const expiryNote = isPending && booking.expiresAt
+                ? `<small class="expiry-note">Expires ${dateTime.format(new Date(booking.expiresAt))}</small>`
+                : "";
+
+            const actions = isConfirmed
+                ? `<button class="button button-outline compact" data-ticket="${escapeHtml(booking.bookingRef)}">View ticket</button>
+                   <button class="button button-danger compact" data-cancel-booking="${escapeHtml(booking.bookingRef)}">Cancel</button>`
+                : isPending
+                ? `<button class="button button-primary compact" data-confirm-booking="${escapeHtml(booking.bookingRef)}">Confirm</button>
+                   <button class="button button-danger compact" data-cancel-booking="${escapeHtml(booking.bookingRef)}">Release</button>`
+                : "";
+
+            return `<article class="booking-item">
+                <div>
+                    <span class="status ${isCancelled ? "cancelled" : isPending ? "pending" : ""}">${booking.status}</span>
+                    <h3>${escapeHtml(booking.eventName)}</h3>
+                    <p>${booking.seatsBooked} seat${booking.seatsBooked === 1 ? "" : "s"} · Ref ${escapeHtml(booking.bookingRef)}</p>
+                    ${expiryNote}
+                </div>
+                <div>
+                    <strong>${money.format(booking.totalAmount)}</strong>
+                    <small>${dateTime.format(new Date(booking.bookedAt))}</small>
+                </div>
+                ${actions}
+            </article>`;
+        }).join("");
+
+    $("#bookingList").innerHTML = markup;
+    const profileList = $("#profileBookingList");
+    if (profileList) profileList.innerHTML = markup;
+    renderAdminStats();
+}
+
+function renderAdminStats() {
+    if (state.user?.role !== "ADMIN") return;
+    const confirmed = state.bookings.filter(b => b.status === "CONFIRMED");
+    const pending = state.bookings.filter(b => b.status === "PENDING");
+    const cancelled = state.bookings.filter(b => b.status === "CANCELLED");
+    $("#statTotalEvents").textContent = state.events.length;
+    $("#statTotalBookings").textContent = state.bookings.length;
+    $("#statRevenue").textContent = money.format(confirmed.reduce((t, b) => t + b.totalAmount, 0));
+    $("#statConfirmed").textContent = confirmed.length;
+    $("#statPending").textContent = pending.length;
+    $("#statCancelled").textContent = cancelled.length;
+
+    if (!state.events.length) {
+        $("#seatsSoldTable").innerHTML = `<p class="empty-hint">No events yet.</p>`;
         return;
     }
-
-    $("#bookingList").innerHTML = state.bookings.map(booking => {
-        const isPending  = booking.status === "PENDING";
-        const isCancelled = booking.status === "CANCELLED";
-        const isConfirmed = booking.status === "CONFIRMED";
-
-        // Show expiry countdown for pending bookings
-        const expiryNote = isPending && booking.expiresAt
-            ? `<small class="expiry-note">Expires ${dateTime.format(new Date(booking.expiresAt))}</small>`
-            : "";
-
-        const actions = isConfirmed
-            ? `<button class="button button-danger compact" data-cancel-booking="${escapeHtml(booking.bookingRef)}">Cancel</button>`
-            : isPending
-            ? `<button class="button button-primary compact" data-confirm-booking="${escapeHtml(booking.bookingRef)}">Confirm</button>
-               <button class="button button-danger compact" data-cancel-booking="${escapeHtml(booking.bookingRef)}">Release</button>`
-            : "";
-
-        return `<article class="booking-item">
-            <div>
-                <span class="status ${isCancelled ? "cancelled" : isPending ? "pending" : ""}">${booking.status}</span>
-                <h3>${escapeHtml(booking.eventName)}</h3>
-                <p>${booking.seatsBooked} seat${booking.seatsBooked === 1 ? "" : "s"} · Ref ${escapeHtml(booking.bookingRef)}</p>
-                ${expiryNote}
-            </div>
-            <div>
-                <strong>${money.format(booking.totalAmount)}</strong>
-                <small>${dateTime.format(new Date(booking.bookedAt))}</small>
-            </div>
-            ${actions}
-        </article>`;
-    }).join("");
+    $("#seatsSoldTable").innerHTML = `<table class="seats-table"><thead><tr><th>Event</th><th>Sold</th><th>Total</th><th>% full</th></tr></thead><tbody>${
+        state.events.map(event => {
+            const sold = event.totalSeats - event.availableSeats;
+            const pct = event.totalSeats ? Math.round((sold / event.totalSeats) * 100) : 0;
+            return `<tr><td>${escapeHtml(event.name)}</td><td>${sold}</td><td>${event.totalSeats}</td><td>${pct}%</td></tr>`;
+        }).join("")
+    }</tbody></table>`;
 }
 
 function renderAdminEvents() {
     if (state.user?.role !== "ADMIN") return;
     $("#adminEventCount").textContent = `${state.events.length} event${state.events.length === 1 ? "" : "s"}`;
-    $("#adminEventList").innerHTML = state.events.map(event => `<article class="admin-event"><div><h4>${escapeHtml(event.name)} <span class="status ${event.status === "CANCELLED" ? "cancelled" : ""}">${event.status}</span></h4><p>${escapeHtml(event.venue)} · ${dateTime.format(new Date(event.eventDate))} · ${event.availableSeats}/${event.totalSeats} available</p></div><div class="admin-event-actions">${event.status === "UPCOMING" ? `<button class="button button-outline compact" data-edit-event="${event.id}">Edit</button><button class="button button-danger compact" data-cancel-event="${event.id}">Cancel</button>` : ""}</div></article>`).join("");
+    $("#adminEventList").innerHTML = state.events.map(event => `<article class="admin-event"><div><h4>${escapeHtml(event.name)} ${statusBadge(event.status)}</h4><p>${escapeHtml(event.venue)} · ${dateTime.format(new Date(event.eventDate))} · ${event.availableSeats}/${event.totalSeats} available</p></div><div class="admin-event-actions">${event.status === "UPCOMING" ? `<button class="button button-outline compact" data-edit-event="${event.id}">Edit</button><button class="button button-danger compact" data-cancel-event="${event.id}">Cancel</button>` : ""}</div></article>`).join("");
+    renderAdminStats();
 }
 
 function editEvent(id) {
@@ -293,10 +596,14 @@ function editEvent(id) {
     const form = $("#eventForm");
     form.elements.name.value = event.name;
     form.elements.venue.value = event.venue;
+    form.elements.city.value = event.city || "";
     form.elements.eventDate.value = event.eventDate.slice(0, 16);
     form.elements.ticketPrice.value = event.ticketPrice;
     form.elements.totalSeats.value = event.totalSeats;
     form.elements.totalSeats.disabled = true;
+    form.elements.category.value = event.category || "OTHER";
+    form.elements.imageUrl.value = event.imageUrl || "";
+    form.elements.description.value = event.description || "";
     $("#eventFormTitle").textContent = "Edit event";
     $("#eventSubmit").textContent = "Save changes";
     $("#eventSubmit").dataset.label = "Save changes";
@@ -321,14 +628,49 @@ document.addEventListener("click", async event => {
     const open = event.target.closest("[data-open]");
     const switchTo = event.target.closest("[data-switch]");
     const book = event.target.closest("[data-book]");
+    const view = event.target.closest("[data-view]");
+    const wishlistToggle = event.target.closest("[data-wishlist]");
+    const wishlistRemove = event.target.closest("[data-wishlist-remove]");
     const cancelBooking = event.target.closest("[data-cancel-booking]");
+    const ticketBtn = event.target.closest("[data-ticket]");
     const edit = event.target.closest("[data-edit-event]");
     const cancelEvent = event.target.closest("[data-cancel-event]");
+    const chip = event.target.closest("[data-category]");
+    const shareAction = event.target.closest("[data-share-action]");
     if (open) openModal(open.dataset.open);
     if (event.target.closest("[data-close]")) closeModals();
     if (switchTo) { closeModals(); openModal(switchTo.dataset.switch); }
-    if (book) beginBooking(book.dataset.book);
+    if (book) { beginBooking(book.dataset.book); return; }
+    if (wishlistToggle) { toggleWishlist(wishlistToggle.dataset.wishlist); return; }
+    if (wishlistRemove) { toggleWishlist(wishlistRemove.dataset.wishlistRemove); return; }
+    if (view) { openEventDetails(view.dataset.view); return; }
+    if (ticketBtn) { openTicket(ticketBtn.dataset.ticket); return; }
     if (edit) editEvent(edit.dataset.editEvent);
+    if (chip) {
+        state.activeCategory = chip.dataset.category;
+        $$("#categoryChips .chip").forEach(c => c.classList.toggle("active", c === chip));
+        loadEvents();
+    }
+    if (event.target.id === "detailsWishlistButton" || event.target.closest("#detailsWishlistButton")) {
+        if (state.viewingEventId) toggleWishlist(state.viewingEventId);
+        return;
+    }
+    if (event.target.id === "detailsShareButton") {
+        const eventData = state.events.find(e => e.id === state.viewingEventId);
+        if (eventData) openSharePopover(event.target, eventData);
+        return;
+    }
+    if (shareAction && shareEventContext) {
+        const url = `${location.origin}${location.pathname}#events?event=${shareEventContext.id}`;
+        if (shareAction.dataset.shareAction === "copy") {
+            navigator.clipboard.writeText(url).then(() => toast("Event link copied")).catch(() => toast("Could not copy link", "error"));
+        } else {
+            window.open(`https://wa.me/?text=${encodeURIComponent(`${shareEventContext.name} — ${url}`)}`, "_blank");
+        }
+        closeSharePopover();
+        return;
+    }
+    if (!event.target.closest("#sharePopover") && event.target.id !== "detailsShareButton") closeSharePopover();
     if (cancelBooking && confirm("Cancel this booking and release its seats?")) {
         try { await api(`/api/bookings/${cancelBooking.dataset.cancelBooking}`, { method: "DELETE" }); toast("Booking cancelled"); await Promise.all([loadBookings(), loadEvents()]); } catch (error) { toast(error.message, "error"); }
     }
@@ -382,10 +724,54 @@ $("#bookingForm").addEventListener("submit", async event => {
     finally { setBusy(form, false); }
 });
 
+$("#profileForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
+    try {
+        const updated = await api("/api/users/me", { method: "PUT", body: JSON.stringify({ name: form.elements.name.value, phone: form.elements.phone.value }) });
+        state.user = { ...state.user, ...updated };
+        updateSessionUi();
+        toast("Profile updated");
+    } catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
+$("#passwordForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget;
+    if (form.elements.newPassword.value !== form.elements.confirmPassword.value) {
+        form.elements.confirmPassword.setCustomValidity("Passwords do not match");
+        form.reportValidity();
+        form.elements.confirmPassword.setCustomValidity("");
+        return;
+    }
+    setBusy(form, true);
+    try {
+        await api("/api/users/me/password", { method: "PUT", body: JSON.stringify({ currentPassword: form.elements.currentPassword.value, newPassword: form.elements.newPassword.value }) });
+        toast("Password updated");
+        form.reset();
+    } catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
+$("#reviewForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
+    const eventId = form.dataset.eventId;
+    try {
+        await api(`/api/events/${eventId}/reviews`, { method: "POST", body: JSON.stringify({ rating: Number(form.elements.rating.value), comment: form.elements.comment.value || null }) });
+        toast("Thanks for your review!");
+        form.reset();
+        await loadReviews(Number(eventId));
+    } catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
 $("#eventForm").addEventListener("submit", async event => {
     event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
     const raw = Object.fromEntries(new FormData(form));
-    const payload = { name: raw.name, venue: raw.venue, eventDate: raw.eventDate, ticketPrice: Number(raw.ticketPrice) };
+    const payload = {
+        name: raw.name, venue: raw.venue, city: raw.city || null, eventDate: raw.eventDate,
+        ticketPrice: Number(raw.ticketPrice), category: raw.category || null,
+        imageUrl: raw.imageUrl || null, description: raw.description || null
+    };
     if (!state.editingEventId) payload.totalSeats = Number(raw.totalSeats);
     try {
         await api(state.editingEventId ? `/api/events/${state.editingEventId}` : "/api/events", { method: state.editingEventId ? "PUT" : "POST", body: JSON.stringify(payload) });
@@ -397,13 +783,79 @@ $("#eventForm").addEventListener("submit", async event => {
 const debouncedLoadEvents = debounce(loadEvents);
 $("#eventSearch").addEventListener("input", debouncedLoadEvents);
 $("#availabilityFilter").addEventListener("change", loadEvents);
+$("#cityFilter").addEventListener("input", debouncedLoadEvents);
+$("#dateFilter").addEventListener("change", loadEvents);
+$("#minPriceFilter").addEventListener("input", debouncedLoadEvents);
+$("#maxPriceFilter").addEventListener("input", debouncedLoadEvents);
+$("#clearFilters").addEventListener("click", clearAllFilters);
+$("#emptyClearFilters").addEventListener("click", clearAllFilters);
+$("#detailsBookButton").addEventListener("click", () => {
+    if (!state.viewingEventId) return;
+    closeModals();
+    beginBooking(state.viewingEventId);
+});
 $("#bookingForm").elements.seatsRequired.addEventListener("input", updateBookingTotal);
 $("#logoutButton").addEventListener("click", () => logout());
 $("#refreshBookings").addEventListener("click", loadBookings);
 $("#cancelEdit").addEventListener("click", resetEventForm);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeModals(); });
 
+function applyTheme(theme) {
+    if (theme === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+        document.documentElement.removeAttribute("data-theme");
+    }
+    const btn = $("#themeToggle");
+    btn.textContent = theme === "dark" ? "☀️" : "🌙";
+    btn.setAttribute("aria-pressed", String(theme === "dark"));
+    localStorage.setItem("evently_theme", theme);
+}
+
+function initTheme() {
+    const saved = localStorage.getItem("evently_theme");
+    const preferred = saved || "light";
+    applyTheme(preferred);
+}
+
+$("#themeToggle").addEventListener("click", () => {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    applyTheme(isDark ? "light" : "dark");
+});
+
+function initGoogleSignIn() {
+    if (!window.google?.accounts?.id) return;
+    const clientId = window.GOOGLE_CLIENT_ID || "";
+    if (!clientId || clientId.includes("YOUR_GOOGLE_CLIENT_ID")) return; // not configured yet
+    google.accounts.id.initialize({ client_id: clientId, callback: handleGoogleCredential });
+    ["googleSignInLogin", "googleSignInRegister"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) google.accounts.id.renderButton(el, { theme: "outline", size: "large", width: 320 });
+    });
+}
+
+async function handleGoogleCredential(response) {
+    try {
+        const result = await api("/api/auth/google", {
+            method: "POST", auth: false, body: JSON.stringify({ credential: response.credential })
+        });
+        state.token = result.token;
+        state.user = result.user;
+        sessionStorage.setItem("evently_token", result.token);
+        updateSessionUi();
+        closeModals();
+        await Promise.all([loadBookings(), loadWishlist()]);
+        toast(`Welcome, ${state.user.name}`);
+    } catch (error) {
+        toast(error.message, "error");
+    }
+}
+
+window.addEventListener("load", initGoogleSignIn);
+
 setupPasswordToggles();
+initTheme();
 updateSessionUi();
+loadCategories();
 loadEvents();
 restoreSession().then(renderAdminEvents);

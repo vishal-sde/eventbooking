@@ -29,20 +29,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Controller-slice tests for EventController.
- *
- * SecurityConfig is imported explicitly rather than relying on Spring Boot's
- * OAuth2 resource-server auto-configuration inside @WebMvcTest — with no
- * issuer-uri/jwk-set-uri and no JwtDecoder bean present, that auto-config
- * backs off silently and requests end up hitting the default (wide-open or
- * fully-locked, depending on classpath) security chain instead of the real
- * one. Importing SecurityConfig directly reproduces production behavior.
- *
- * UserRepository is mocked purely to satisfy SecurityConfig's constructor
- * (it builds a UserDetailsService from it) — it is never exercised by these
- * tests because auth is injected directly via the `jwt()` post-processor.
- */
+
 @WebMvcTest(EventController.class)
 @Import(SecurityConfig.class)
 @EnableWebSecurity
@@ -199,7 +186,7 @@ class EventControllerTest {
                     .first(true)
                     .last(true)
                     .build();
-            when(eventService.search(isNull(), isNull(), isNull(), eq(0), eq(10), eq("eventDate"), eq("asc")))
+            when(eventService.search(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(0), eq(10), eq("eventDate"), eq("asc")))
                     .thenReturn(paged);
 
             mockMvc.perform(get("/api/events"))

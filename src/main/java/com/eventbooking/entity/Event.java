@@ -43,6 +43,20 @@ public class Event {
     @Column(nullable = false)
     private Status status;
 
+    @Column(length = 500)
+    private String imageUrl;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Enumerated(value = EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private Category category = Category.OTHER;
+
+    @Column(length = 120)
+    private String city;
+
     @Version
     @Column(nullable = false)
     private Long version;
