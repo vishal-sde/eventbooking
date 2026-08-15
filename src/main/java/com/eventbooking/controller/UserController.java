@@ -18,9 +18,9 @@ public class UserController {
     private final UserService userService;
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public UserDto.Response create(@Valid @RequestBody UserDto.CreateRequest request) {
-        return userService.create(request);
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void create(@Valid @RequestBody UserDto.CreateRequest request) {
+        userService.create(request);
     }
 
     @GetMapping("/me")

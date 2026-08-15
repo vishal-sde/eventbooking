@@ -46,4 +46,11 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM Event e WHERE e.id = :id")
     Optional<Event> findByIdForUpdate(@Param("id") Long id);
+
+    @Query("""
+            SELECT e FROM Event e
+            WHERE e.status IN (com.eventbooking.entity.Status.UPCOMING, com.eventbooking.entity.Status.SOLD_OUT)
+              AND e.eventDate <= :now
+            """)
+    java.util.List<Event> findPastEventsStillOpen(@Param("now") LocalDateTime now);
 }

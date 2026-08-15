@@ -37,6 +37,7 @@ class BookingServiceTest {
     @Mock private EventRepository eventRepository;
     @Mock private UserRepository userRepository;
     @Mock private DistributedLockService lockService;
+    @Mock private EmailService emailService;
 
     @InjectMocks
     private BookingService bookingService;

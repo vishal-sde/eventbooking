@@ -81,6 +81,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("POST".equalsIgnoreCase(method) && path.equals("/api/users")) {
             return new RateLimitRule("signup", signupCapacity, signupWindowSeconds);
         }
+        if ("POST".equalsIgnoreCase(method) && path.equals("/api/auth/resend-otp")) {
+            return new RateLimitRule("otp-resend", signupCapacity, signupWindowSeconds);
+        }
         return null;
     }
 

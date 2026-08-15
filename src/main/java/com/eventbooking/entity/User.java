@@ -35,6 +35,9 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
+    @Column(nullable = false)
+    private boolean emailVerified;
+
     @Column(nullable = false,updatable = false)
     private LocalDateTime createdAt;
 

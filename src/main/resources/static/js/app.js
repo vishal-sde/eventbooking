@@ -164,12 +164,16 @@ async function login(email, password) {
     const result = await api("/api/auth/login", {
         method: "POST", auth: false, body: JSON.stringify({ email, password })
     });
+    applySession(result);
+}
+
+function applySession(result) {
     state.token = result.token;
     state.user = result.user;
     sessionStorage.setItem("evently_token", result.token);
     updateSessionUi();
     closeModals();
-    await Promise.all([loadBookings(), loadWishlist()]);
+    Promise.all([loadBookings(), loadWishlist()]);
     toast(`Welcome, ${state.user.name}`);
 }
 
@@ -473,7 +477,9 @@ async function loadReviews(eventId) {
 function renderSpotlight() {
     const event = state.events.find(item => item.status === "UPCOMING" && item.availableSeats > 0);
     if (!event) return;
-    $("#spotlightCard").innerHTML = `<div class="spotlight-date"><span>${new Date(event.eventDate).getDate()}</span><strong>${new Date(event.eventDate).toLocaleString("en", { month: "long" }).toUpperCase()}</strong></div><div><span class="tag">Featured event</span><h2>${escapeHtml(event.name)}</h2><p>${escapeHtml(event.venue)} · ${dateTime.format(new Date(event.eventDate))}</p></div>`;
+    const hasImage = Boolean(event.imageUrl);
+    const styleAttr = hasImage ? ` style="background-image:url('${escapeHtml(event.imageUrl)}')"` : "";
+    $("#spotlightCard").innerHTML = `<div class="spotlight-date ${hasImage ? "has-image" : ""}"${styleAttr}><span>${new Date(event.eventDate).getDate()}</span><strong>${new Date(event.eventDate).toLocaleString("en", { month: "long" }).toUpperCase()}</strong></div><div><span class="tag">Featured event</span><h2>${escapeHtml(event.name)}</h2><p>${escapeHtml(event.venue)} · ${dateTime.format(new Date(event.eventDate))}</p></div>`;
 }
 
 function beginBooking(eventId) {
@@ -710,9 +716,45 @@ $("#registerForm").addEventListener("submit", async event => {
     }
     delete data.confirmPassword;
     setBusy(form, true);
-    try { await api("/api/users", { method: "POST", auth: false, body: JSON.stringify(data) }); await login(data.email, data.password); form.reset(); }
+    try {
+        await api("/api/users", { method: "POST", auth: false, body: JSON.stringify(data) });
+        form.reset();
+        closeModals();
+        $("#otpForm").elements.email.value = data.email;
+        $("#otpEmailDisplay").textContent = data.email;
+        openModal("otpModal");
+        toast("Check your email for a verification code");
+    }
     catch (error) { toast(error.message, "error"); }
     finally { setBusy(form, false); }
+});
+
+$("#otpForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget;
+    setBusy(form, true);
+    try {
+        const result = await api("/api/auth/verify-otp", {
+            method: "POST", auth: false,
+            body: JSON.stringify({ email: form.elements.email.value, otp: form.elements.otp.value })
+        });
+        form.reset();
+        applySession(result);
+    }
+    catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
+$("#resendOtpBtn").addEventListener("click", async () => {
+    const button = $("#resendOtpBtn");
+    const email = $("#otpForm").elements.email.value;
+    if (!email) return;
+    button.disabled = true;
+    try {
+        await api("/api/auth/resend-otp", { method: "POST", auth: false, body: JSON.stringify({ email }) });
+        toast("A new code is on its way");
+    }
+    catch (error) { toast(error.message, "error"); }
+    finally { setTimeout(() => { button.disabled = false; }, 5000); }
 });
 
 $("#bookingForm").addEventListener("submit", async event => {

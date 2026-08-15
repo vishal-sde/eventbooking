@@ -4,6 +4,7 @@ import com.eventbooking.dto.UserDto;
 import com.eventbooking.entity.User;
 import com.eventbooking.entity.Role;
 import com.eventbooking.exception.DuplicateResourceException;
+import com.eventbooking.exception.EmailNotVerifiedException;
 import com.eventbooking.exception.ResourceNotFoundException;
 import com.eventbooking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,23 +20,74 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final OtpService otpService;
 
-    @Transactional
-    public UserDto.Response create(UserDto.CreateRequest request) {
+    @Transactional(readOnly = true)
+    public void create(UserDto.CreateRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         if (userRepository.existsByEmail(email)) {
             throw new DuplicateResourceException("A user with this email already exists");
         }
+        String passwordHash = passwordEncoder.encode(request.getPassword());
+        String otp = otpService.startRegistration(request.getName().trim(), email, request.getPhone().trim(), passwordHash);
+        emailService.sendOtpEmail(email, otp);
+    }
+
+    @Transactional
+    public UserDto.Response verifyOtp(String email, String otp) {
+        String normalized = email.trim().toLowerCase();
+        if (userRepository.existsByEmail(normalized)) {
+            throw new IllegalStateException("This account is already verified");
+        }
+        OtpService.PendingRegistration pending = otpService.verify(normalized, otp)
+                .orElseThrow(() -> new IllegalStateException("Invalid or expired code. Request a new one and try again."));
         User user = User.builder()
-                .name(request.getName().trim())
-                .email(email)
-                .phone(request.getPhone().trim())
-                .password(passwordEncoder.encode(request.getPassword()))
+                .name(pending.name())
+                .email(pending.email())
+                .phone(pending.phone())
+                .password(pending.passwordHash())
                 .role(Role.USER)
+                .emailVerified(true)
                 .build();
         User saved = userRepository.save(user);
         emailService.sendRegistrationConfirmation(saved);
         return UserDto.Response.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public void resendOtp(String email) {
+        String normalized = email.trim().toLowerCase();
+        if (userRepository.existsByEmail(normalized)) {
+            throw new IllegalStateException("This account is already verified");
+        }
+        if (!otpService.hasPendingRegistration(normalized)) {
+            throw new ResourceNotFoundException("No pending registration found for this email. Please register again.");
+        }
+        if (!otpService.canResend(normalized)) {
+            throw new IllegalStateException("Please wait a moment before requesting another code");
+        }
+        String otp = otpService.resend(normalized)
+                .orElseThrow(() -> new ResourceNotFoundException("No pending registration found for this email. Please register again."));
+        emailService.sendOtpEmail(normalized, otp);
+    }
+
+    /**
+     * Called from AuthController after password authentication succeeds,
+     * before a token is issued. Now effectively a defensive backstop rather
+     * than the primary gate: since verifyOtp() is the only path that writes
+     * a self-registered user into the database, and it only ever writes
+     * emailVerified=true, an unverified row should never exist here at all.
+     * Kept as a second check in case a future code path creates a User
+     * directly without going through OTP verification.
+     */
+    @Transactional(readOnly = true)
+    public void requireVerified(String email) {
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!user.isEmailVerified()) {
+            throw new EmailNotVerifiedException(
+                    "Please verify your email before logging in. Check your inbox for the code, or request a new one.");
+        }
     }
 
     @Transactional
@@ -51,6 +103,7 @@ public class UserService {
                 .phone("") // not collected by Google sign-in; user can add it later from their profile
                 .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
                 .role(Role.USER)
+                .emailVerified(true) // Google already verified this email address
                 .build();
         User saved = userRepository.save(user);
         emailService.sendRegistrationConfirmation(saved);

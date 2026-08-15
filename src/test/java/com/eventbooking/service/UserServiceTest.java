@@ -30,6 +30,8 @@ class UserServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private EmailService emailService;
+    @Mock private OtpService otpService;
 
     @InjectMocks
     private UserService userService;
@@ -56,8 +58,8 @@ class UserServiceTest {
     class Create {
 
         @Test
-        @DisplayName("creates user successfully and returns response DTO")
-        void createsUserSuccessfully() {
+        @DisplayName("does NOT save a user row — only stages a pending registration and sends an OTP")
+        void doesNotPersistUser() {
             UserDto.CreateRequest request = UserDto.CreateRequest.builder()
                     .name("John Doe")
                     .email("john@example.com")
@@ -67,19 +69,17 @@ class UserServiceTest {
 
             when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
             when(passwordEncoder.encode("password123")).thenReturn("$2a$10$hashed");
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
+            when(otpService.startRegistration("John Doe", "john@example.com", "9876543210", "$2a$10$hashed"))
+                    .thenReturn("123456");
 
-            UserDto.Response response = userService.create(request);
+            userService.create(request);
 
-            assertThat(response).isNotNull();
-            assertThat(response.getName()).isEqualTo("John Doe");
-            assertThat(response.getEmail()).isEqualTo("john@example.com");
-            assertThat(response.getRole()).isEqualTo(Role.USER);
-            verify(userRepository).save(any(User.class));
+            verify(userRepository, never()).save(any());
+            verify(emailService).sendOtpEmail("john@example.com", "123456");
         }
 
         @Test
-        @DisplayName("throws DuplicateResourceException when email already exists")
+        @DisplayName("throws DuplicateResourceException when a verified account with this email already exists")
         void throwsOnDuplicateEmail() {
             UserDto.CreateRequest request = UserDto.CreateRequest.builder()
                     .name("Jane Doe")
@@ -94,11 +94,11 @@ class UserServiceTest {
                     .isInstanceOf(DuplicateResourceException.class)
                     .hasMessageContaining("already exists");
 
-            verify(userRepository, never()).save(any());
+            verify(otpService, never()).startRegistration(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("normalises email to lowercase before saving")
+        @DisplayName("normalises email to lowercase before staging registration")
         void normalisesEmailToLowercase() {
             UserDto.CreateRequest request = UserDto.CreateRequest.builder()
                     .name("John Doe")
@@ -109,18 +109,14 @@ class UserServiceTest {
 
             when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
             when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
 
             userService.create(request);
 
-            // Verify save was called with lowercased email
-            verify(userRepository).save(argThat(u ->
-                    u.getEmail().equals("john@example.com")
-            ));
+            verify(otpService).startRegistration(eq("John Doe"), eq("john@example.com"), any(), any());
         }
 
         @Test
-        @DisplayName("trims whitespace from name and email before saving")
+        @DisplayName("trims whitespace from name/email/phone before staging registration")
         void trimsWhitespace() {
             UserDto.CreateRequest request = UserDto.CreateRequest.builder()
                     .name("  John Doe  ")
@@ -131,38 +127,14 @@ class UserServiceTest {
 
             when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
             when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
 
             userService.create(request);
 
-            verify(userRepository).save(argThat(u ->
-                    u.getName().equals("John Doe") && u.getEmail().equals("john@example.com")
-            ));
+            verify(otpService).startRegistration(eq("John Doe"), eq("john@example.com"), any(), any());
         }
 
         @Test
-        @DisplayName("always assigns USER role — never ADMIN — on registration")
-        void alwaysAssignsUserRole() {
-            UserDto.CreateRequest request = UserDto.CreateRequest.builder()
-                    .name("Hacker")
-                    .email("hacker@example.com")
-                    .phone("9876543210")
-                    .password("password123")
-                    .build();
-
-            when(userRepository.existsByEmail("hacker@example.com")).thenReturn(false);
-            when(passwordEncoder.encode(any())).thenReturn("$2a$10$hashed");
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
-
-            userService.create(request);
-
-            verify(userRepository).save(argThat(u ->
-                    u.getRole() == Role.USER
-            ));
-        }
-
-        @Test
-        @DisplayName("encodes password before saving — never stores plaintext")
+        @DisplayName("encodes password before staging registration — never stores plaintext")
         void encodesPassword() {
             UserDto.CreateRequest request = UserDto.CreateRequest.builder()
                     .name("John Doe")
@@ -173,14 +145,115 @@ class UserServiceTest {
 
             when(userRepository.existsByEmail(any())).thenReturn(false);
             when(passwordEncoder.encode("plaintext123")).thenReturn("$2a$10$encoded");
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
 
             userService.create(request);
 
+            verify(otpService).startRegistration(any(), any(), any(), eq("$2a$10$encoded"));
+        }
+    }
+
+    // ── verifyOtp() ──────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("verifyOtp()")
+    class VerifyOtp {
+
+        @Test
+        @DisplayName("creates the user row only after a correct OTP, with emailVerified true")
+        void createsUserOnCorrectOtp() {
+            OtpService.PendingRegistration pending = new OtpService.PendingRegistration(
+                    "John Doe", "john@example.com", "9876543210", "$2a$10$hashed", "123456");
+
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(otpService.verify("john@example.com", "123456")).thenReturn(java.util.Optional.of(pending));
+            when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+            UserDto.Response response = userService.verifyOtp("john@example.com", "123456");
+
+            assertThat(response).isNotNull();
             verify(userRepository).save(argThat(u ->
-                    u.getPassword().equals("$2a$10$encoded")
-                            && !u.getPassword().equals("plaintext123")
+                    u.getEmail().equals("john@example.com") && u.isEmailVerified() && u.getRole() == Role.USER
             ));
+            verify(emailService).sendRegistrationConfirmation(any());
+        }
+
+        @Test
+        @DisplayName("throws and does not save when the OTP is wrong or expired")
+        void throwsOnBadOtp() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(otpService.verify("john@example.com", "000000")).thenReturn(java.util.Optional.empty());
+
+            assertThatThrownBy(() -> userService.verifyOtp("john@example.com", "000000"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Invalid or expired");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("throws when the account is already verified, without touching Redis")
+        void throwsWhenAlreadyVerified() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
+
+            assertThatThrownBy(() -> userService.verifyOtp("john@example.com", "123456"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already verified");
+
+            verify(otpService, never()).verify(any(), any());
+        }
+    }
+
+    // ── resendOtp() ──────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("resendOtp()")
+    class ResendOtp {
+
+        @Test
+        @DisplayName("issues a new OTP when a pending registration exists and cooldown has passed")
+        void resendsSuccessfully() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(otpService.hasPendingRegistration("john@example.com")).thenReturn(true);
+            when(otpService.canResend("john@example.com")).thenReturn(true);
+            when(otpService.resend("john@example.com")).thenReturn(java.util.Optional.of("654321"));
+
+            userService.resendOtp("john@example.com");
+
+            verify(emailService).sendOtpEmail("john@example.com", "654321");
+        }
+
+        @Test
+        @DisplayName("throws when the cooldown hasn't elapsed yet")
+        void throwsDuringCooldown() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(otpService.hasPendingRegistration("john@example.com")).thenReturn(true);
+            when(otpService.canResend("john@example.com")).thenReturn(false);
+
+            assertThatThrownBy(() -> userService.resendOtp("john@example.com"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("wait");
+
+            verify(emailService, never()).sendOtpEmail(any(), any());
+        }
+
+        @Test
+        @DisplayName("throws when there is no pending registration to resend for")
+        void throwsWhenNoPendingRegistration() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+            when(otpService.hasPendingRegistration("john@example.com")).thenReturn(false);
+
+            assertThatThrownBy(() -> userService.resendOtp("john@example.com"))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("throws when the account is already verified")
+        void throwsWhenAlreadyVerified() {
+            when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
+
+            assertThatThrownBy(() -> userService.resendOtp("john@example.com"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already verified");
         }
     }
 

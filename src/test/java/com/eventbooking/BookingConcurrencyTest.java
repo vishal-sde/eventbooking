@@ -2,8 +2,8 @@ package com.eventbooking;
 
 import com.eventbooking.dto.BookingDto;
 import com.eventbooking.dto.EventDto;
-import com.eventbooking.dto.UserDto;
 import com.eventbooking.entity.BookingStatus;
+import com.eventbooking.entity.Role;
 import com.eventbooking.entity.Status;
 import com.eventbooking.entity.User;
 import com.eventbooking.repository.BookingRepository;
@@ -11,12 +11,12 @@ import com.eventbooking.repository.EventRepository;
 import com.eventbooking.repository.UserRepository;
 import com.eventbooking.service.BookingService;
 import com.eventbooking.service.EventService;
-import com.eventbooking.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,10 +36,10 @@ class BookingConcurrencyTest {
 
     @Autowired private BookingService bookingService;
     @Autowired private EventService eventService;
-    @Autowired private UserService userService;
     @Autowired private EventRepository eventRepository;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private PasswordEncoder passwordEncoder;
 
     private static final int AVAILABLE_SEATS = 5;
     private static final int CONCURRENT_USERS = 50;
@@ -66,17 +66,22 @@ class BookingConcurrencyTest {
         );
         eventId = event.getId();
 
-        // Create 50 unique users
+        // Create 50 unique users, saved directly — this test is exercising
+        // booking concurrency, not the registration/OTP flow, so it bypasses
+        // userService.create() (which only stages a pending registration and
+        // sends an email, it doesn't persist anyone) and writes verified
+        // users straight to the repository instead.
         for (int i = 0; i < CONCURRENT_USERS; i++) {
-            UserDto.Response user = userService.create(
-                    UserDto.CreateRequest.builder()
-                            .name("TestUser" + i)
-                            .email("testuser" + i + "@test.com")
-                            .phone("9" + String.format("%09d", i))
-                            .password("password123")
-                            .build()
-            );
-            userIds.add(user.getId());
+            User user = User.builder()
+                    .name("TestUser" + i)
+                    .email("testuser" + i + "@test.com")
+                    .phone("9" + String.format("%09d", i))
+                    .password(passwordEncoder.encode("password123"))
+                    .role(Role.USER)
+                    .emailVerified(true)
+                    .build();
+            User saved = userRepository.save(user);
+            userIds.add(saved.getId());
         }
     }
 

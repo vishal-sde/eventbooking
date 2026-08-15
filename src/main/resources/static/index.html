@@ -14,7 +14,7 @@
     <title>Evently | Find your next experience</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
@@ -58,7 +58,7 @@
     </section>
 
     <section class="section events-section" id="events">
-        <div class="section-heading">
+        <div class="section-heading reveal">
             <div><span class="eyebrow dark">Curated for you</span><h2>Upcoming events</h2></div>
             <div class="event-tools">
                 <label class="search-box"><span aria-hidden="true">⌕</span><input id="eventSearch" type="search" placeholder="Search events, venues or cities"></label>
@@ -82,7 +82,7 @@
     </section>
 
     <section class="section dashboard-section hidden" id="dashboard">
-        <div class="section-heading"><div><span class="eyebrow dark">Your plans</span><h2>My bookings</h2></div><button class="button button-outline" id="refreshBookings">Refresh</button></div>
+        <div class="section-heading reveal"><div><span class="eyebrow dark">Your plans</span><h2>My bookings</h2></div><button class="button button-outline" id="refreshBookings">Refresh</button></div>
         <div class="stats-row">
             <article><span>Confirmed</span><strong id="confirmedCount">0</strong></article>
             <article><span>Seats reserved</span><strong id="seatCount">0</strong></article>
@@ -92,7 +92,7 @@
     </section>
 
     <section class="section profile-section hidden" id="profile">
-        <div class="section-heading"><div><span class="eyebrow dark">Your account</span><h2>My profile</h2></div></div>
+        <div class="section-heading reveal"><div><span class="eyebrow dark">Your account</span><h2>My profile</h2></div></div>
         <div class="admin-layout">
             <form class="panel event-form" id="profileForm">
                 <div class="panel-heading"><h3>Profile details</h3></div>
@@ -114,13 +114,13 @@
     </section>
 
     <section class="section wishlist-section hidden" id="wishlist">
-        <div class="section-heading"><div><span class="eyebrow dark">Saved for later</span><h2>My wishlist</h2></div></div>
+        <div class="section-heading reveal"><div><span class="eyebrow dark">Saved for later</span><h2>My wishlist</h2></div></div>
         <div class="event-grid" id="wishlistGrid"></div>
         <div class="empty-state hidden" id="wishlistEmpty"><strong>Nothing saved yet</strong><span>Tap the heart on any event to save it here.</span></div>
     </section>
 
     <section class="section admin-section hidden" id="admin">
-        <div class="section-heading"><div><span class="eyebrow dark">Control room</span><h2>Event management</h2></div></div>
+        <div class="section-heading reveal"><div><span class="eyebrow dark">Control room</span><h2>Event management</h2></div></div>
         <div class="stats-row admin-stats" id="adminStats">
             <article><span>Total events</span><strong id="statTotalEvents">0</strong></article>
             <article><span>Total bookings</span><strong id="statTotalBookings">0</strong></article>
@@ -159,6 +159,8 @@
 <div class="modal" id="loginModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Welcome back</span><h2>Log in to Evently</h2><p>Use your email and password to manage bookings.</p><form id="loginForm"><label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label><label>Password<span class="password-control"><input type="password" name="password" required autocomplete="current-password" placeholder="Your password"><button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false" title="Show password"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label><button class="button button-primary full" type="submit">Log in</button></form><div class="oauth-divider"><span>or</span></div><div class="google-signin" id="googleSignInLogin"></div><small>New here? <button class="text-button" data-switch="registerModal">Create an account</button></small></div></div>
 
 <div class="modal" id="registerModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Join Evently</span><h2>Create your account</h2><form id="registerForm"><label>Full name<input name="name" required autocomplete="name" placeholder="Your name"></label><label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label><label>Phone<input name="phone" required inputmode="tel" autocomplete="tel" pattern="[+]?[0-9]{10,15}" placeholder="9876543210"></label><label>Password<span class="password-control"><input type="password" name="password" required minlength="8" maxlength="72" autocomplete="new-password" placeholder="At least 8 characters"><button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false" title="Show password"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label><label>Confirm password<span class="password-control"><input type="password" name="confirmPassword" required minlength="8" maxlength="72" autocomplete="new-password" placeholder="Repeat your password"><button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false" title="Show password"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label><button class="button button-primary full" type="submit">Create account</button></form><div class="oauth-divider"><span>or</span></div><div class="google-signin" id="googleSignInRegister"></div><small>Already registered? <button class="text-button" data-switch="loginModal">Log in</button></small></div></div>
+
+<div class="modal" id="otpModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button><span class="eyebrow dark">Almost there</span><h2>Verify your email</h2><p>Enter the 6-digit code we sent to <strong id="otpEmailDisplay"></strong>.</p><form id="otpForm"><input type="hidden" name="email"><label>Verification code<input name="otp" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="123456"></label><button class="button button-primary full" type="submit">Verify and continue</button></form><small>Didn't get a code? <button class="text-button" type="button" id="resendOtpBtn">Resend code</button></small></div></div>
 
 <div class="modal details-modal" id="eventDetailsModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><button class="modal-close" data-close aria-label="Close">×</button>
     <div class="details-image" id="detailsImage">
@@ -235,5 +237,67 @@
 </script>
 <script src="/js/vendor/qrcode.js"></script>
 <script src="/js/app.js"></script>
+<script>
+    /* ---------------------------------------------------------
+       Pure UI/UX polish only: header shadow on scroll, scroll
+       reveal for headings, and a subtle button ripple.
+       No app state, no API calls, no element removal — safe to
+       run alongside app.js.
+    --------------------------------------------------------- */
+    (function () {
+        var header = document.querySelector(".site-header");
+        if (header) {
+            var onScroll = function () {
+                header.classList.toggle("is-scrolled", window.scrollY > 8);
+            };
+            onScroll();
+            window.addEventListener("scroll", onScroll, { passive: true });
+        }
+
+        if ("IntersectionObserver" in window) {
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add("in-view");
+                        io.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.15 });
+            document.querySelectorAll(".reveal").forEach(function (el) {
+                io.observe(el);
+            });
+        } else {
+            document.querySelectorAll(".reveal").forEach(function (el) {
+                el.classList.add("in-view");
+            });
+        }
+
+        document.addEventListener("click", function (event) {
+            var button = event.target.closest(".button");
+            if (!button) return;
+            var rect = button.getBoundingClientRect();
+            var ripple = document.createElement("span");
+            var size = Math.max(rect.width, rect.height);
+            ripple.style.position = "absolute";
+            ripple.style.left = (event.clientX - rect.left - size / 2) + "px";
+            ripple.style.top = (event.clientY - rect.top - size / 2) + "px";
+            ripple.style.width = ripple.style.height = size + "px";
+            ripple.style.borderRadius = "50%";
+            ripple.style.background = "rgba(255,255,255,.45)";
+            ripple.style.pointerEvents = "none";
+            ripple.style.transform = "scale(0)";
+            ripple.style.transition = "transform .5s ease, opacity .5s ease";
+            ripple.style.zIndex = "2";
+            var prevPosition = getComputedStyle(button).position;
+            if (prevPosition === "static") button.style.position = "relative";
+            button.appendChild(ripple);
+            requestAnimationFrame(function () {
+                ripple.style.transform = "scale(2.2)";
+                ripple.style.opacity = "0";
+            });
+            setTimeout(function () { ripple.remove(); }, 520);
+        });
+    })();
+</script>
 </body>
 </html>

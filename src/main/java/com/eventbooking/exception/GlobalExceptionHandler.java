@@ -33,6 +33,11 @@ public class GlobalExceptionHandler {
     }
 
 
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    ResponseEntity<ApiError> emailNotVerified(EmailNotVerifiedException ex, HttpServletRequest request) {
+        return response(HttpStatus.FORBIDDEN, ex.getMessage(), request, Map.of());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiError> accessDenied(AccessDeniedException ex, HttpServletRequest request) {
         return response(HttpStatus.FORBIDDEN, ex.getMessage(), request, Map.of());
@@ -84,6 +89,15 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, "The resource is busy; retry the request", request, Map.of());
     }
 
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    ResponseEntity<ApiError> staticResourceNotFound(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex, HttpServletRequest request) {
+        // Routine — browsers request /favicon.ico on every page load, bots probe
+        // random paths, etc. This is a normal 404, not a server fault, so it
+        // doesn't belong at ERROR severity or in the catch-all handler below.
+        return response(HttpStatus.NOT_FOUND, "Resource not found", request, Map.of());
+    }
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception ex, HttpServletRequest request) {

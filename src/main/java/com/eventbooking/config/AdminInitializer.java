@@ -38,7 +38,7 @@ public class AdminInitializer implements CommandLineRunner {
                 .phone("0000000000")
                 .password(passwordEncoder.encode(password))
                 .role(Role.ADMIN)
+                .emailVerified(true)
                 .build());
     }
 }
-

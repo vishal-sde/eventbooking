@@ -5,7 +5,7 @@ Flyway-versioned schema migrations, and Redis-backed distributed locking that pr
 overselling seats under concurrent load. Containerized with Docker and deployed on Railway.
 
 **Live demo:** https://eventbooking-production-e86a.up.railway.app
-**API docs:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+**API docs:** [apidocumentation.md](./apidocumentation.md)
 
 ---
 
@@ -132,8 +132,7 @@ that matters most in this codebase.
 
 Deployed on Railway from this repo's `Dockerfile`, with managed MySQL and Redis plugins.
 Environment variables are wired through Railway's variable-reference system
-(`${{ServiceName.VAR}}`) so database/cache credentials are never hardcoded. See
-[`RAILWAY_DEPLOY.md`](./RAILWAY_DEPLOY.md) for the exact setup steps.
+(`${{ServiceName.VAR}}`) so database/cache credentials are never hardcoded.
 
 ## Project structure
 

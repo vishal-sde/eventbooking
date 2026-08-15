@@ -46,8 +46,21 @@ public class AuthController {
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email().trim().toLowerCase(), request.password()));
+        userService.requireVerified(authentication.getName());
         UserDto.Response user = userService.getByEmail(authentication.getName());
         return issueToken(user);
+    }
+
+    @PostMapping("/verify-otp")
+    public LoginResponse verifyOtp(@Valid @RequestBody UserDto.VerifyOtpRequest request) {
+        UserDto.Response user = userService.verifyOtp(request.getEmail(), request.getOtp());
+        return issueToken(user);
+    }
+
+    @PostMapping("/resend-otp")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void resendOtp(@Valid @RequestBody UserDto.ResendOtpRequest request) {
+        userService.resendOtp(request.getEmail());
     }
 
     @PostMapping("/google")

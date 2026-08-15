@@ -72,6 +72,7 @@ public class UserDto {
         private String email;
         private String phone;
         private com.eventbooking.entity.Role role;
+        private boolean emailVerified;
 
         public static Response from(User user){
             return Response.builder()
@@ -80,7 +81,36 @@ public class UserDto {
                     .email(user.getEmail())
                     .phone(user.getPhone())
                     .role(user.getRole())
+                    .emailVerified(user.isEmailVerified())
                     .build();
         }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class VerifyOtpRequest {
+
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
+
+        @NotBlank(message = "Code is required")
+        @Pattern(regexp = "^[0-9]{6}$", message = "Code must be 6 digits")
+        private String otp;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ResendOtpRequest {
+
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
     }
 }

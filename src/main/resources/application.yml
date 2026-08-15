@@ -78,7 +78,7 @@ app:
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:120}
   admin:
     email: ${ADMIN_EMAIL:admin@gmail.com}
-    password: ${ADMIN_PASSWORD}
+    password: ${ADMIN_PASSWORD:admin@00}
     name: ${ADMIN_NAME:Administrator}
   mail:
     enabled: ${MAIL_ENABLED:false}

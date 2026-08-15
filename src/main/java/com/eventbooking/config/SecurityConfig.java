@@ -121,7 +121,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/login", "/api/auth/google").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/login", "/api/auth/google",
+                                "/api/auth/verify-otp", "/api/auth/resend-otp").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/events/*/reviews").authenticated()
                         .requestMatchers("/api/auth/**").authenticated()

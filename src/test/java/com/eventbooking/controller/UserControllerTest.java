@@ -76,16 +76,14 @@ class UserControllerTest {
     class Create {
 
         @Test
-        @DisplayName("returns 201 without authentication (public registration)")
+        @DisplayName("returns 202 without authentication (public registration, pending verification)")
         void createsUser_whenAnonymous() throws Exception {
-            when(userService.create(any(UserDto.CreateRequest.class))).thenReturn(sampleResponse());
-
             mockMvc.perform(post("/api/users")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(validCreateRequest())))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.id").value(1L))
-                    .andExpect(jsonPath("$.email").value("jane@example.com"));
+                    .andExpect(status().isAccepted());
+
+            verify(userService).create(any(UserDto.CreateRequest.class));
         }
 
         @Test
@@ -110,8 +108,8 @@ class UserControllerTest {
         @Test
         @DisplayName("returns 409 when email is already registered")
         void rejectsCreate_whenEmailTaken() throws Exception {
-            when(userService.create(any(UserDto.CreateRequest.class)))
-                    .thenThrow(new DuplicateResourceException("A user with this email already exists"));
+            doThrow(new DuplicateResourceException("A user with this email already exists"))
+                    .when(userService).create(any(UserDto.CreateRequest.class));
 
             mockMvc.perform(post("/api/users")
                             .contentType("application/json")

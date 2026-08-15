@@ -30,6 +30,22 @@ public class EmailService {
     private String fromAddress;
 
     @Async
+    public void sendOtpEmail(String toEmail, String otp) {
+        String subject = "Verify your Evently account";
+        String details = """
+                <div style="text-align:center;margin:22px 0">
+                  <span style="display:inline-block;font:800 32px 'DM Sans',Arial,sans-serif;letter-spacing:.35em;padding:14px 22px;background:#f6f4ee;border-radius:12px">%s</span>
+                </div>
+                """.formatted(otp);
+        String body = wrap(
+                "Verify your email",
+                "Use the code below to verify " + escape(toEmail) + ". It expires in 10 minutes.",
+                details
+        );
+        send(toEmail, subject, body);
+    }
+
+    @Async
     public void sendRegistrationConfirmation(User user) {
         String subject = "Welcome to Evently, " + user.getName() + "!";
         String body = wrap(
