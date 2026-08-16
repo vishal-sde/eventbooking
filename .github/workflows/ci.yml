@@ -45,6 +45,10 @@ jobs:
       REDIS_PORT: 6379
       # Test-only secret — never used outside CI, does not need to be a real secret.
       JWT_SECRET: ci-test-only-secret-value-not-used-anywhere-else-32chars-min
+      # Also required with no default in application.yml (AdminInitializer)
+      # — every @SpringBootTest fails to boot without this, same class of
+      # error as the local "Access denied" / missing-env issues.
+      ADMIN_PASSWORD: ci-test-only-admin-password-not-used-anywhere-else
 
     steps:
       - name: Checkout
