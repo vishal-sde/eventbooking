@@ -757,6 +757,60 @@ $("#resendOtpBtn").addEventListener("click", async () => {
     finally { setTimeout(() => { button.disabled = false; }, 5000); }
 });
 
+$("#forgotPasswordForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget;
+    const email = form.elements.email.value;
+    setBusy(form, true);
+    try {
+        await api("/api/auth/forgot-password", { method: "POST", auth: false, body: JSON.stringify({ email }) });
+        form.reset();
+        closeModals();
+        $("#resetPasswordForm").elements.email.value = email;
+        $("#resetEmailDisplay").textContent = email;
+        openModal("resetPasswordModal");
+        // Deliberately the same message whether or not the email is
+        // registered — the backend never reveals that distinction either,
+        // so the UI shouldn't leak it back via a different message.
+        toast("If that email is registered, a reset code is on its way");
+    }
+    catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
+$("#resetPasswordForm").addEventListener("submit", async event => {
+    event.preventDefault(); const form = event.currentTarget;
+    setBusy(form, true);
+    try {
+        await api("/api/auth/reset-password", {
+            method: "POST", auth: false,
+            body: JSON.stringify({
+                email: form.elements.email.value,
+                otp: form.elements.otp.value,
+                newPassword: form.elements.newPassword.value
+            })
+        });
+        form.reset();
+        closeModals();
+        toast("Password reset. You can log in with your new password now.");
+        openModal("loginModal");
+    }
+    catch (error) { toast(error.message, "error"); }
+    finally { setBusy(form, false); }
+});
+
+$("#resendResetBtn").addEventListener("click", async () => {
+    const button = $("#resendResetBtn");
+    const email = $("#resetPasswordForm").elements.email.value;
+    if (!email) return;
+    button.disabled = true;
+    try {
+        await api("/api/auth/forgot-password", { method: "POST", auth: false, body: JSON.stringify({ email }) });
+        toast("If that email is registered, a new code is on its way");
+    }
+    catch (error) { toast(error.message, "error"); }
+    finally { setTimeout(() => { button.disabled = false; }, 5000); }
+});
+
 $("#bookingForm").addEventListener("submit", async event => {
     event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
     try {

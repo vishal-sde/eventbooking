@@ -63,6 +63,22 @@ public class AuthController {
         userService.resendOtp(request.getEmail());
     }
 
+    @PostMapping("/forgot-password")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void forgotPassword(@Valid @RequestBody UserDto.ForgotPasswordRequest request) {
+        // Always 204 regardless of whether the email is registered — the
+        // service layer is the one deciding, silently, whether to actually
+        // send anything. Do not add a response body or a different status
+        // here for "email not found"; that would defeat the point.
+        userService.forgotPassword(request.getEmail());
+    }
+
+    @PostMapping("/reset-password")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody UserDto.ResetPasswordRequest request) {
+        userService.resetPassword(request.getEmail(), request.getOtp(), request.getNewPassword());
+    }
+
     @PostMapping("/google")
     public LoginResponse google(@Valid @RequestBody GoogleLoginRequest request) {
         if (googleClientId == null || googleClientId.isBlank()) {

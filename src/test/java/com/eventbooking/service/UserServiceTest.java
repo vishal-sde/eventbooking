@@ -32,6 +32,7 @@ class UserServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailService emailService;
     @Mock private OtpService otpService;
+    @Mock private PasswordResetService passwordResetService;
 
     @InjectMocks
     private UserService userService;
@@ -254,6 +255,90 @@ class UserServiceTest {
             assertThatThrownBy(() -> userService.resendOtp("john@example.com"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("already verified");
+        }
+    }
+
+    // ── forgotPassword() ─────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("forgotPassword()")
+    class ForgotPassword {
+
+        @Test
+        @DisplayName("sends a reset code when the account exists and cooldown has passed")
+        void sendsResetCodeForExistingAccount() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(java.util.Optional.of(testUser));
+            when(passwordResetService.canResend("john@example.com")).thenReturn(true);
+            when(passwordResetService.generate("john@example.com")).thenReturn("123456");
+
+            userService.forgotPassword("john@example.com");
+
+            verify(emailService).sendPasswordResetEmail("john@example.com", "123456");
+        }
+
+        @Test
+        @DisplayName("does nothing — and does not throw — for an email that isn't registered")
+        void silentlyNoOpsForUnknownEmail() {
+            when(userRepository.findByEmail("ghost@example.com")).thenReturn(java.util.Optional.empty());
+
+            userService.forgotPassword("ghost@example.com");
+
+            verify(emailService, never()).sendPasswordResetEmail(any(), any());
+            verify(passwordResetService, never()).generate(any());
+        }
+
+        @Test
+        @DisplayName("does nothing during the cooldown, without throwing or leaking that a cooldown is active")
+        void silentlyNoOpsDuringCooldown() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(java.util.Optional.of(testUser));
+            when(passwordResetService.canResend("john@example.com")).thenReturn(false);
+
+            userService.forgotPassword("john@example.com");
+
+            verify(emailService, never()).sendPasswordResetEmail(any(), any());
+        }
+    }
+
+    // ── resetPassword() ──────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("resetPassword()")
+    class ResetPassword {
+
+        @Test
+        @DisplayName("updates the password and sends a notice on a correct code")
+        void resetsPasswordOnCorrectCode() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(java.util.Optional.of(testUser));
+            when(passwordResetService.verify("john@example.com", "123456")).thenReturn(true);
+            when(passwordEncoder.encode("newPassword123")).thenReturn("$2a$10$newHash");
+
+            userService.resetPassword("john@example.com", "123456", "newPassword123");
+
+            verify(userRepository).save(argThat(u -> u.getPassword().equals("$2a$10$newHash")));
+            verify(emailService).sendPasswordChangedNotice("john@example.com");
+        }
+
+        @Test
+        @DisplayName("throws and does not save when the code is wrong or expired")
+        void throwsOnBadCode() {
+            when(userRepository.findByEmail("john@example.com")).thenReturn(java.util.Optional.of(testUser));
+            when(passwordResetService.verify("john@example.com", "000000")).thenReturn(false);
+
+            assertThatThrownBy(() -> userService.resetPassword("john@example.com", "000000", "newPassword123"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Invalid or expired");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("throws the same message for an unknown email as for a bad code — no enumeration")
+        void sameErrorForUnknownEmail() {
+            when(userRepository.findByEmail("ghost@example.com")).thenReturn(java.util.Optional.empty());
+
+            assertThatThrownBy(() -> userService.resetPassword("ghost@example.com", "123456", "newPassword123"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Invalid or expired");
         }
     }
 

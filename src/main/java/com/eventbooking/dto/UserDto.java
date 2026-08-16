@@ -113,4 +113,36 @@ public class UserDto {
         @Email(message = "Invalid email format")
         private String email;
     }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ForgotPasswordRequest {
+
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ResetPasswordRequest {
+
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
+
+        @NotBlank(message = "Code is required")
+        @Pattern(regexp = "^[0-9]{6}$", message = "Code must be 6 digits")
+        private String otp;
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 8, max = 72, message = "Password must be 8-72 characters")
+        private String newPassword;
+    }
 }

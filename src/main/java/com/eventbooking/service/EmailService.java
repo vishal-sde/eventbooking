@@ -30,6 +30,35 @@ public class EmailService {
     private String fromAddress;
 
     @Async
+    public void sendPasswordChangedNotice(String toEmail) {
+        String subject = "Your Evently password was changed";
+        String body = wrap(
+                "Password changed",
+                "The password for " + escape(toEmail) + " was just reset. If this wasn't you, "
+                        + "contact support immediately — your account may be at risk.",
+                ""
+        );
+        send(toEmail, subject, body);
+    }
+
+    @Async
+    public void sendPasswordResetEmail(String toEmail, String otp) {
+        String subject = "Reset your Evently password";
+        String details = """
+                <div style="text-align:center;margin:22px 0">
+                  <span style="display:inline-block;font:800 32px 'DM Sans',Arial,sans-serif;letter-spacing:.35em;padding:14px 22px;background:#f6f4ee;border-radius:12px">%s</span>
+                </div>
+                """.formatted(otp);
+        String body = wrap(
+                "Reset your password",
+                "Use the code below to reset the password for " + escape(toEmail)
+                        + ". It expires in 15 minutes. If you didn't request this, you can ignore this email.",
+                details
+        );
+        send(toEmail, subject, body);
+    }
+
+    @Async
     public void sendOtpEmail(String toEmail, String otp) {
         String subject = "Verify your Evently account";
         String details = """

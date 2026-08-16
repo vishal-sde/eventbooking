@@ -29,7 +29,8 @@ public class RateLimitConfig {
         FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new RateLimitFilter(redissonClient, objectMapper,
                 loginCapacity, loginWindowSeconds, signupCapacity, signupWindowSeconds));
-        registration.addUrlPatterns("/api/auth/login", "/api/users", "/api/auth/resend-otp");
+        registration.addUrlPatterns("/api/auth/login", "/api/users", "/api/auth/resend-otp",
+                "/api/auth/forgot-password", "/api/auth/reset-password");
         // Must run before Spring Security's filter chain so blocked requests
         // never reach authentication logic, password hashing, or the DB.
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);

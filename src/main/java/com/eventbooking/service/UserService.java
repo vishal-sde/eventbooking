@@ -21,6 +21,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final OtpService otpService;
+    private final PasswordResetService passwordResetService;
 
     @Transactional(readOnly = true)
     public void create(UserDto.CreateRequest request) {
@@ -69,6 +70,38 @@ public class UserService {
         String otp = otpService.resend(normalized)
                 .orElseThrow(() -> new ResourceNotFoundException("No pending registration found for this email. Please register again."));
         emailService.sendOtpEmail(normalized, otp);
+    }
+
+    @Transactional(readOnly = true)
+    public void forgotPassword(String email) {
+        String normalized = email.trim().toLowerCase();
+        User user = userRepository.findByEmail(normalized).orElse(null);
+        // Deliberately does not distinguish "no such account" from "code sent"
+        // in its response or its exceptions — unlike resendOtp(), which does
+        // leak that distinction. A forgot-password endpoint is a much more
+        // sensitive place for email enumeration than a registration-resend
+        // endpoint, so this one is built not to leak it from the start.
+        if (user == null) {
+            return;
+        }
+        if (!passwordResetService.canResend(normalized)) {
+            return; // same non-committal response as any other case — no "please wait" leak either
+        }
+        String code = passwordResetService.generate(normalized);
+        emailService.sendPasswordResetEmail(normalized, code);
+    }
+
+    @Transactional
+    public void resetPassword(String email, String code, String newPassword) {
+        String normalized = email.trim().toLowerCase();
+        User user = userRepository.findByEmail(normalized)
+                .orElseThrow(() -> new IllegalStateException("Invalid or expired code. Request a new one and try again."));
+        if (!passwordResetService.verify(normalized, code)) {
+            throw new IllegalStateException("Invalid or expired code. Request a new one and try again.");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        emailService.sendPasswordChangedNotice(normalized);
     }
 
     /**
