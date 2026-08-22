@@ -5,7 +5,7 @@ MySQL persistence with Flyway-versioned schema migrations, and Redis-backed dist
 that prevents overselling seats under concurrent load. Containerized with Docker and deployed
 on Railway.
 
-**Live demo:** https://eventbooking-production-e86a.up.railway.app
+**Live demo:** https://eventbooking-713a.onrender.com/
 **API docs:** [apidocumentation.md](./apidocumentation.md)
 
 ---
