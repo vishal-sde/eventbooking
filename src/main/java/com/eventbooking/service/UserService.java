@@ -104,15 +104,7 @@ public class UserService {
         emailService.sendPasswordChangedNotice(normalized);
     }
 
-    /**
-     * Called from AuthController after password authentication succeeds,
-     * before a token is issued. Now effectively a defensive backstop rather
-     * than the primary gate: since verifyOtp() is the only path that writes
-     * a self-registered user into the database, and it only ever writes
-     * emailVerified=true, an unverified row should never exist here at all.
-     * Kept as a second check in case a future code path creates a User
-     * directly without going through OTP verification.
-     */
+
     @Transactional(readOnly = true)
     public void requireVerified(String email) {
         User user = userRepository.findByEmail(email.trim().toLowerCase())

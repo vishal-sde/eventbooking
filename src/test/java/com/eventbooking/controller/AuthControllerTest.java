@@ -29,15 +29,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Controller-slice tests for AuthController.
- * See EventControllerTest for why SecurityConfig is imported explicitly.
- *
- * AuthenticationManager is mocked because AuthController talks to it directly.
- * JwtEncoder is NOT mocked — it's the real bean SecurityConfig builds from the
- * test-only app.jwt.secret property, so /login is exercised end-to-end,
- * including actual token generation.
- */
+
 @WebMvcTest(AuthController.class)
 @Import(SecurityConfig.class)
 @EnableWebSecurity

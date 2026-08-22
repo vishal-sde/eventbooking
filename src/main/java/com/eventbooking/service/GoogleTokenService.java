@@ -11,15 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * Exchanges the long-lived Google OAuth2 refresh token for a short-lived
- * access token, and caches it in memory until shortly before it expires.
- *
- * Access tokens from Google last ~1 hour — there is no point fetching a new
- * one on every send, and no point storing the access token anywhere durable
- * (it's worthless once expired). Only the refresh token needs to be
- * persisted, and that lives in an env var, never in code or git.
- */
+
 @Component
 @Slf4j
 public class GoogleTokenService {
@@ -67,8 +59,8 @@ public class GoogleTokenService {
     private String refreshAccessToken() {
         if (clientId.isBlank() || clientSecret.isBlank() || refreshToken.isBlank()) {
             throw new IllegalStateException(
-                    "Google OAuth2 credentials not set — need GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "
-                            + "and GOOGLE_REFRESH_TOKEN to send email.");
+                    "Google OAuth2 mail credentials not set — need GOOGLE_MAIL_CLIENT_ID, "
+                            + "GOOGLE_MAIL_CLIENT_SECRET, and GOOGLE_MAIL_REFRESH_TOKEN to send email.");
         }
 
         Map<String, Object> body = restClient.post()

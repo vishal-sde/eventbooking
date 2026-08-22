@@ -28,10 +28,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * Tests for BookingService.cancel(), get(), and list() operations.
- * Split from BookingServiceTest to keep each file focused.
- */
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("BookingService — cancel / get / list")
 class BookingServiceCancelGetListTest {

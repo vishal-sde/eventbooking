@@ -8,11 +8,7 @@ import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
 import java.time.Duration;
 
-/**
- * Holds password-reset codes in Redis. Simpler than OtpService's
- * PendingRegistration — a reset code has nothing to carry alongside it,
- * the account already exists, so it's just a bare code with a TTL.
- */
+
 @Service
 @RequiredArgsConstructor
 public class PasswordResetService {

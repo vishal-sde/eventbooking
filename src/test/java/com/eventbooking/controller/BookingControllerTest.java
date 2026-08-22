@@ -31,17 +31,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Controller-slice tests for BookingController.
- * See EventControllerTest for why SecurityConfig is imported explicitly.
- *
- * BookingService throws org.springframework.security.access.AccessDeniedException
- * directly for ownership checks (see requireOwnerOrAdmin). That exception isn't
- * handled in GlobalExceptionHandler — it's caught by Spring Security's
- * ExceptionTranslationFilter and routed to SecurityConfig's accessDeniedHandler,
- * which is why the assertion below is a plain 403 rather than the ApiError body
- * shape used by the other exception handlers.
- */
+
 @WebMvcTest(BookingController.class)
 @Import(SecurityConfig.class)
 @EnableWebSecurity

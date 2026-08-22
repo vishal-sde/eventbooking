@@ -1,9 +1,7 @@
 spring:
   jpa:
     hibernate:
-      # 'validate': checks schema matches entities but never alters tables.
-      # 'update' in prod is dangerous — it can silently drop columns or alter
-      # types if your entity changes, potentially corrupting live data.
+
       ddl-auto: validate
     show-sql: false
     properties:
@@ -12,10 +10,11 @@ spring:
   data:
     redis:
       password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: true
   datasource:
     hikari:
-      # Tighter pool for Railway's free tier (512MB RAM).
-      # 20 connections at 1–5MB each would eat your container alive.
+
       maximum-pool-size: 5
       minimum-idle: 2
 
@@ -23,11 +22,11 @@ logging:
   level:
     root: INFO
     com.eventbooking: INFO
-    # Turn these off entirely in prod — they're only useful while debugging locally
+
     org.springframework.transaction: WARN
     org.hibernate.SQL: WARN
 
-# Expose only the health endpoint — nothing else should be public
+
 management:
   endpoints:
     web:
@@ -37,10 +36,7 @@ management:
     health:
       show-details: never
 
-# Explicit, not just relying on Spring Boot's default — never leak stack
-# traces or exception details to clients for errors that bypass our
-# GlobalExceptionHandler (e.g. failures at the filter level, before the
-# DispatcherServlet).
+
 server:
   error:
     include-stacktrace: never

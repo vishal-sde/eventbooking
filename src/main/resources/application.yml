@@ -36,12 +36,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-        # Email sending — deliberately NOT SMTP. Railway (and most PaaS free/hobby
-        # tiers) block outbound SMTP ports 25/465/587, so JavaMailSender cannot
-        # connect from a deployed instance regardless of credentials. EmailService
-      # calls the Gmail API's HTTPS endpoint instead (port 443, never blocked).
-      # app.mail.enabled=false (below) makes the app boot fine with no key set.
-      # See GoogleEmailProvider for the actual HTTP call.
+
       connectiontimeout: 5000
       timeout: 5000
       writetimeout: 5000
@@ -70,14 +65,9 @@ app:
     from-name: ${MAIL_FROM_NAME:Evently}
     from-email: ${MAIL_FROM_EMAIL:}
   google:
-    # client-id here is the LOGIN client ("Web client 1") — used only by
-    # AuthController to verify "Sign in with Google" ID tokens. Do not put
-    # mail credentials here.
+
     client-id: ${GOOGLE_CLIENT_ID:}
-    # mail-* below belong to the SEPARATE "evently-mailer" OAuth client,
-    # used only by GoogleTokenService/GoogleEmailProvider to send email.
-    # These two clients are not interchangeable — mixing their id/secret
-    # pairs produces "invalid_client" from Google.
+
     mail-client-id: ${GOOGLE_MAIL_CLIENT_ID:}
     mail-client-secret: ${GOOGLE_MAIL_CLIENT_SECRET:}
     mail-refresh-token: ${GOOGLE_MAIL_REFRESH_TOKEN:}

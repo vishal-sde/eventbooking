@@ -28,10 +28,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Controller-slice tests for UserController.
- * See EventControllerTest for why SecurityConfig is imported explicitly.
- */
+
 @WebMvcTest(UserController.class)
 @Import(SecurityConfig.class)
 @EnableWebSecurity
