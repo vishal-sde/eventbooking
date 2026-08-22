@@ -2,12 +2,9 @@ package com.eventbooking.service;
 
 import com.eventbooking.entity.Booking;
 import com.eventbooking.entity.User;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -21,13 +18,10 @@ public class EmailService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("EEE, d MMM yyyy · h:mm a");
 
-    private final JavaMailSender mailSender;
+    private final EmailProvider emailProvider;
 
     @Value("${app.mail.enabled:false}")
     private boolean mailEnabled;
-
-    @Value("${app.mail.from:Evently <no-reply@evently.app>}")
-    private String fromAddress;
 
     @Async
     public void sendPasswordChangedNotice(String toEmail) {
@@ -121,13 +115,7 @@ public class EmailService {
             return;
         }
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-            helper.setFrom(fromAddress);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-            mailSender.send(message);
+            emailProvider.send(to, subject, htmlBody);
             log.info("Sent email \"{}\" to {}", subject, to);
         } catch (Exception ex) {
             log.error("Failed to send email \"{}\" to {}: {}", subject, to, ex.getMessage());

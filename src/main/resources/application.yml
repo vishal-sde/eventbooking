@@ -36,21 +36,15 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-  # SMTP — disabled by default (app.mail.enabled) so the app boots fine with no mail server configured.
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+        # Email sending — deliberately NOT SMTP. Railway (and most PaaS free/hobby
+        # tiers) block outbound SMTP ports 25/465/587, so JavaMailSender cannot
+        # connect from a deployed instance regardless of credentials. EmailService
+      # calls the Gmail API's HTTPS endpoint instead (port 443, never blocked).
+      # app.mail.enabled=false (below) makes the app boot fine with no key set.
+      # See GoogleEmailProvider for the actual HTTP call.
+      connectiontimeout: 5000
+      timeout: 5000
+      writetimeout: 5000
 
   flyway:
     enabled: true
@@ -63,28 +57,30 @@ server:
   servlet:
     context-path: /
 
-# The mail starter auto-registers a health check that tries to connect to
-# the SMTP server on every /actuator/health poll. EmailService already
-# handles send failures gracefully without breaking the app, so a flaky or
-# unreachable mail server should never flip the container to "unhealthy".
-management:
-  health:
-    mail:
-      enabled: false
-
 app:
   jwt:
     secret: ${JWT_SECRET}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:120}
   admin:
     email: ${ADMIN_EMAIL:admin@gmail.com}
-    password: ${ADMIN_PASSWORD:admin@00}
+    password: ${ADMIN_PASSWORD}
     name: ${ADMIN_NAME:Administrator}
   mail:
     enabled: ${MAIL_ENABLED:false}
-    from: ${MAIL_FROM:Evently <no-reply@evently.app>}
+    from-name: ${MAIL_FROM_NAME:Evently}
+    from-email: ${MAIL_FROM_EMAIL:}
   google:
+    # client-id here is the LOGIN client ("Web client 1") — used only by
+    # AuthController to verify "Sign in with Google" ID tokens. Do not put
+    # mail credentials here.
     client-id: ${GOOGLE_CLIENT_ID:}
+    # mail-* below belong to the SEPARATE "evently-mailer" OAuth client,
+    # used only by GoogleTokenService/GoogleEmailProvider to send email.
+    # These two clients are not interchangeable — mixing their id/secret
+    # pairs produces "invalid_client" from Google.
+    mail-client-id: ${GOOGLE_MAIL_CLIENT_ID:}
+    mail-client-secret: ${GOOGLE_MAIL_CLIENT_SECRET:}
+    mail-refresh-token: ${GOOGLE_MAIL_REFRESH_TOKEN:}
   rate-limit:
     login:
       capacity: ${RATE_LIMIT_LOGIN_CAPACITY:5}       # max attempts...
@@ -92,7 +88,6 @@ app:
     signup:
       capacity: ${RATE_LIMIT_SIGNUP_CAPACITY:10}
       window-seconds: ${RATE_LIMIT_SIGNUP_WINDOW:3600}
-
 # Logging
 logging:
   level:
