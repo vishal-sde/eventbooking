@@ -11,7 +11,12 @@ spring:
     redis:
       password: ${REDIS_PASSWORD}
       ssl:
-        enabled: true
+        # Managed Redis providers (Render, Upstash) require TLS — self-hosted
+        # Redis running as a plain container next to the app (e.g. on EC2 via
+        # docker-compose) does not have TLS configured, so this must be false
+        # there. Override with REDIS_SSL_ENABLED=true only when pointing at a
+        # managed provider that requires it.
+        enabled: ${REDIS_SSL_ENABLED:false}
   datasource:
     hikari:
 
