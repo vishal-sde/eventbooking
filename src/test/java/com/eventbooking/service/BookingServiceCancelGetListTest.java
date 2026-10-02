@@ -18,7 +18,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +40,7 @@ class BookingServiceCancelGetListTest {
     @Mock private EventRepository eventRepository;
     @Mock private UserRepository userRepository;
     @Mock private DistributedLockService lockService;
+    @Mock private TransactionTemplate tx;          // NEW
 
     @InjectMocks
     private BookingService bookingService;
@@ -62,7 +66,7 @@ class BookingServiceCancelGetListTest {
                 .eventDate(LocalDateTime.now().plusDays(30))
                 .totalSeats(100)
                 .availableSeats(90)
-                .ticketPrice(500.0)
+                .ticketPrice(new BigDecimal("500.00"))
                 .status(Status.UPCOMING)
                 .build();
 
@@ -72,10 +76,17 @@ class BookingServiceCancelGetListTest {
                 .user(testUser)
                 .event(testEvent)
                 .seatsBooked(2)
-                .totalAmount(1000.0)
+                .totalAmount(new BigDecimal("1000.00"))
                 .status(BookingStatus.CONFIRMED)
                 .bookedAt(LocalDateTime.now().minusMinutes(30))
                 .build();
+
+        // NEW: lock and transaction are no-ops that just run the work.
+        // lenient() because not every test reaches them (e.g. "booking not found").
+        lenient().when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
+                .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
+        lenient().when(tx.execute(any())).thenAnswer(inv ->
+                inv.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
 
         setUserContext(testUser.getEmail(), "ROLE_USER");
     }
@@ -101,51 +112,37 @@ class BookingServiceCancelGetListTest {
         @Test
         @DisplayName("cancels a confirmed booking and restores seats")
         void cancelsConfirmedBookingAndRestoresSeats() {
-            when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
-                    .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
                     .thenReturn(Optional.of(confirmedBooking));
-            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.save(any(Booking.class))).thenReturn(confirmedBooking);
-            when(eventRepository.save(any(Event.class))).thenReturn(testEvent);
+            when(bookingRepository.claimForCancel(eq(1L), any(LocalDateTime.class))).thenReturn(1);
 
             bookingService.cancel("BK-TEST001");
 
-            verify(bookingRepository).save(argThat(b ->
-                    b.getStatus() == BookingStatus.CANCELLED &&
-                            b.getCancelledAt() != null
-            ));
-            verify(eventRepository).save(argThat(e ->
-                    e.getAvailableSeats() == 92  // 90 + 2
-            ));
+            verify(bookingRepository).claimForCancel(eq(1L), any(LocalDateTime.class));
+            verify(eventRepository).releaseSeats(eq(1L), eq(2), any(LocalDateTime.class));
         }
 
+        // The SOLD_OUT -> UPCOMING flip is now done inside the releaseSeats SQL (a CASE),
+        // so a unit test can only prove releaseSeats is called. The status flip itself
+        // needs an integration test against a real DB.
         @Test
-        @DisplayName("changes SOLD_OUT event back to UPCOMING on cancellation")
-        void changesSoldOutToUpcomingOnCancel() {
-            when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
-                    .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
+        @DisplayName("restores seats for a sold-out event too")
+        void restoresSeatsForSoldOutEvent() {
             testEvent.setAvailableSeats(0);
             testEvent.setStatus(Status.SOLD_OUT);
 
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
                     .thenReturn(Optional.of(confirmedBooking));
-            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.save(any())).thenReturn(confirmedBooking);
-            when(eventRepository.save(any())).thenReturn(testEvent);
+            when(bookingRepository.claimForCancel(eq(1L), any(LocalDateTime.class))).thenReturn(1);
 
             bookingService.cancel("BK-TEST001");
 
-            verify(eventRepository).save(argThat(e ->
-                    e.getStatus() == Status.UPCOMING
-            ));
+            verify(eventRepository).releaseSeats(eq(1L), eq(2), any(LocalDateTime.class));
         }
 
         @Test
         @DisplayName("throws IllegalStateException when booking is already cancelled")
         void throwsWhenAlreadyCancelled() {
-            when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
-                    .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
             confirmedBooking.setStatus(BookingStatus.CANCELLED);
 
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
@@ -154,22 +151,39 @@ class BookingServiceCancelGetListTest {
             assertThatThrownBy(() -> bookingService.cancel("BK-TEST001"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("already cancelled");
+
+            verify(eventRepository, never()).releaseSeats(any(), anyInt(), any());
+        }
+
+        // NEW: someone else (the expiry job, or a double click) cancelled it between our
+        // read and our claim. The atomic claim returns 0, so we must NOT restore seats.
+        @Test
+        @DisplayName("does not restore seats when another request already cancelled it")
+        void doesNotRestoreSeatsWhenClaimLost() {
+            when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
+                    .thenReturn(Optional.of(confirmedBooking));
+            when(bookingRepository.claimForCancel(eq(1L), any(LocalDateTime.class))).thenReturn(0);
+
+            assertThatThrownBy(() -> bookingService.cancel("BK-TEST001"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already cancelled");
+
+            verify(eventRepository, never()).releaseSeats(any(), anyInt(), any());
         }
 
         @Test
         @DisplayName("throws IllegalStateException when event date is in the past")
         void throwsForPastEvent() {
-            when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
-                    .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
             testEvent.setEventDate(LocalDateTime.now().minusDays(1));
 
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
                     .thenReturn(Optional.of(confirmedBooking));
-            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
 
             assertThatThrownBy(() -> bookingService.cancel("BK-TEST001"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("Past event");
+
+            verify(bookingRepository, never()).claimForCancel(any(), any());
         }
 
         @Test
@@ -185,15 +199,11 @@ class BookingServiceCancelGetListTest {
         @Test
         @DisplayName("admin can cancel any user's booking")
         void adminCanCancelAnyBooking() {
-            when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
-                    .thenAnswer(inv -> inv.<Supplier<?>>getArgument(1).get());
             setAdminContext();
 
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
                     .thenReturn(Optional.of(confirmedBooking));
-            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.save(any())).thenReturn(confirmedBooking);
-            when(eventRepository.save(any())).thenReturn(testEvent);
+            when(bookingRepository.claimForCancel(eq(1L), any(LocalDateTime.class))).thenReturn(1);
 
             BookingDto.Response response = bookingService.cancel("BK-TEST001");
 
@@ -282,7 +292,7 @@ class BookingServiceCancelGetListTest {
             Booking anotherBooking = Booking.builder()
                     .id(2L).bookingRef("BK-TEST002")
                     .user(testUser).event(testEvent)
-                    .seatsBooked(1).totalAmount(500.0)
+                    .seatsBooked(1).totalAmount(new BigDecimal("500.00"))
                     .status(BookingStatus.CONFIRMED)
                     .bookedAt(LocalDateTime.now())
                     .build();
@@ -315,7 +325,6 @@ class BookingServiceCancelGetListTest {
         void throwsWhenUserAccessesOthersBookings() {
             when(userRepository.findByEmail("test@test.com")).thenReturn(Optional.of(testUser));
 
-            // userId 999 != testUser.id (1)
             assertThatThrownBy(() -> bookingService.list(999L))
                     .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
         }

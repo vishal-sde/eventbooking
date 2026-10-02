@@ -20,6 +20,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -54,7 +55,7 @@ class EventControllerTest {
                 .venue("Wembley Stadium")
                 .eventDate(LocalDateTime.now().plusDays(30))
                 .totalSeats(500)
-                .ticketPrice(99.99)
+                .ticketPrice(new BigDecimal("99.99"))
                 .build();
     }
 
@@ -66,7 +67,7 @@ class EventControllerTest {
                 .eventDate(LocalDateTime.now().plusDays(30))
                 .totalSeats(500)
                 .availableSeats(500)
-                .ticketPrice(99.99)
+                .ticketPrice(new BigDecimal("99.99"))
                 .status(Status.UPCOMING)
                 .version(0L)
                 .build();
@@ -218,7 +219,7 @@ class EventControllerTest {
                     .name("Updated Name")
                     .venue("Updated Venue")
                     .eventDate(LocalDateTime.now().plusDays(60))
-                    .ticketPrice(150.0)
+                    .ticketPrice(new BigDecimal("150.0"))
                     .build();
             when(eventService.update(eq(1L), any(EventDto.UpdateRequest.class))).thenReturn(sampleResponse());
 
@@ -236,7 +237,7 @@ class EventControllerTest {
                     .name("Updated Name")
                     .venue("Updated Venue")
                     .eventDate(LocalDateTime.now().plusDays(60))
-                    .ticketPrice(150.0)
+                    .ticketPrice(new BigDecimal("150.0"))
                     .build();
 
             mockMvc.perform(put("/api/events/1")
@@ -255,7 +256,7 @@ class EventControllerTest {
                     .name("Updated Name")
                     .venue("Updated Venue")
                     .eventDate(LocalDateTime.now().plusDays(60))
-                    .ticketPrice(150.0)
+                    .ticketPrice(new BigDecimal("150.0"))
                     .build();
             when(eventService.update(eq(1L), any(EventDto.UpdateRequest.class)))
                     .thenThrow(new IllegalStateException("Only upcoming events can be updated"));

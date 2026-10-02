@@ -3,6 +3,7 @@ package com.eventbooking.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -34,8 +35,8 @@ public class Booking {
     @Column(nullable = false)
     private Integer seatsBooked;
 
-    @Column(nullable = false)
-    private Double totalAmount;
+    @Column(nullable = false,precision = 12,scale = 2)
+    private BigDecimal totalAmount;
 
     @Enumerated(value = EnumType.STRING)
     @Column(nullable = false)

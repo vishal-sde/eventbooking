@@ -1,0 +1,2 @@
+ALTER TABLE events   MODIFY ticket_price DECIMAL(12,2) NOT NULL;
+ALTER TABLE bookings MODIFY total_amount DECIMAL(12,2) NOT NULL;

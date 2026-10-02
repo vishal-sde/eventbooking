@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -67,7 +68,7 @@ class BookingControllerTest {
                 .eventId(1L)
                 .eventName("Coldplay Live")
                 .seatsBooked(2)
-                .totalAmount(199.98)
+                .totalAmount(new BigDecimal("99.98"))
                 .status(BookingStatus.PENDING)
                 .bookedAt(LocalDateTime.now())
                 .expiresAt(LocalDateTime.now().plusMinutes(5))

@@ -7,10 +7,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.security.core.parameters.P;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -37,8 +41,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             @Param("minSeats") Integer minSeats,
             @Param("category") Category category,
             @Param("city") String city,
-            @Param("minPrice") Double minPrice,
-            @Param("maxPrice") Double maxPrice,
+            @Param("minPrice") BigDecimal minPrice,
+            @Param("maxPrice") BigDecimal maxPrice,
             @Param("dateFrom") LocalDateTime dateFrom,
             Pageable pageable
     );
@@ -53,4 +57,41 @@ public interface EventRepository extends JpaRepository<Event, Long> {
               AND e.eventDate <= :now
             """)
     java.util.List<Event> findPastEventsStillOpen(@Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true,flushAutomatically = true)
+    @Query("""
+            update Event e
+            set e.availableSeats = e.availableSeats - :n,
+                       e.version = e.version + 1,
+                       e.updatedAt = :now
+                 where e.id = :id
+                   and e.status = com.eventbooking.entity.Status.UPCOMING
+                   and e.availableSeats >= :n
+            """)
+    int reserveSeats(@Param("id") Long id,@Param("n") int n,@Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true,flushAutomatically = true)
+    @Query("""
+            update Event e
+                   set e.availableSeats = least(e.totalSeats, e.availableSeats + :n),
+                       e.status = case when e.status = com.eventbooking.entity.Status.SOLD_OUT
+                                       then com.eventbooking.entity.Status.UPCOMING
+                                       else e.status end,
+                       e.version = e.version + 1,
+                       e.updatedAt = :now
+                 where e.id = :id
+            """)
+    int releaseSeats(@Param("id") Long id,@Param("n") int n,@Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update Event e
+       set e.status = com.eventbooking.entity.Status.SOLD_OUT,
+           e.version = e.version + 1,
+           e.updatedAt = :now
+     where e.id = :id
+       and e.availableSeats = 0
+       and e.status = com.eventbooking.entity.Status.UPCOMING
+    """)
+    int markSoldOutIfEmpty(@Param("id") Long id, @Param("now") LocalDateTime now);
 }

@@ -15,7 +15,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -29,6 +31,7 @@ public class BookingService {
     private final EventRepository eventRepository;
     private final DistributedLockService lockService;
     private final EmailService emailService;
+    private final TransactionTemplate tx;
 
 
     public BookingDto.Response create(BookingDto.CreateRequest request) {
@@ -37,30 +40,37 @@ public class BookingService {
                         "User not found: " + request.getUserId()));
         requireOwnerOrAdmin(user);
 
-        // Lock acquired here — BEFORE transaction starts
-        return lockService.executeWithLock(
-                request.getEventId(),
-                () -> processCreate(request, user)
-        );
+
+        return lockService.executeWithLock(request.getEventId(),
+                () -> tx.execute(status ->  processCreate(request, user)));
     }
 
 
     @Transactional
     protected BookingDto.Response processCreate(BookingDto.CreateRequest request, User user) {
-        // Fresh read inside transaction — guaranteed to see latest data
-        // because we hold the Redis lock and no other thread can write
+        LocalDateTime now = LocalDateTime.now();
         Event event = eventRepository.findById(request.getEventId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Event not found: " + request.getEventId()));
 
+        if(event.getStatus()==Status.SOLD_OUT){
+            throw new SeatsUnavailableException("Event is sold out");
+        }
         if (event.getStatus() != Status.UPCOMING ||
-                !event.getEventDate().isAfter(LocalDateTime.now())) {
+                !event.getEventDate().isAfter(now)) {
             throw new IllegalStateException("This event is not open for booking");
+        }
+        if(bookingRepository.existsByUserIdAndEventIdAndStatusIn(
+                user.getId(),event.getId(),List.of(BookingStatus.PENDING,BookingStatus.CONFIRMED))){
+            throw new DuplicateBookingException("You already have an active booking for this event");
         }
         if (bookingRepository.findByUserIdAndEventIdAndStatus(
                 user.getId(), event.getId(), BookingStatus.CONFIRMED).isPresent()) {
             throw new DuplicateBookingException(
                     "You already have a confirmed booking for this event");
+        }
+        if(eventRepository.reserveSeats(event.getId(),request.getSeatsRequired(),now)==0){
+            throw new SeatsUnavailableException("Not enough seats available");
         }
         if (event.getAvailableSeats() < request.getSeatsRequired()) {
             throw new SeatsUnavailableException(
@@ -76,30 +86,28 @@ public class BookingService {
                 .user(user)
                 .event(event)
                 .seatsBooked(request.getSeatsRequired())
-                .totalAmount(event.getTicketPrice() * request.getSeatsRequired())
+                .totalAmount(event.getTicketPrice().multiply(BigDecimal.valueOf(request.getSeatsRequired())))
                 .status(BookingStatus.PENDING)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .build();
 
-        eventRepository.save(event); // @Version check fires here
-        BookingDto.Response response = BookingDto.Response.from(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        eventRepository.markSoldOutIfEmpty(event.getId(),now);
         log.info("Booking confirmed: {} event: {} seats: {}",
-                booking.getBookingRef(), event.getName(), request.getSeatsRequired());
-        return response;
+                saved.getBookingRef(), event.getName(), request.getSeatsRequired());
+        return BookingDto.Response.from(saved);
     }
 
     public BookingDto.Response cancel(String reference) {
-        // First load — for auth check only. User is eagerly loaded.
         Booking authCheck = bookingRepository.findByBookingRefWithDetails(reference)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Booking not found: " + reference));
         requireOwnerOrAdmin(authCheck.getUser());
-
         Long eventId = authCheck.getEvent().getId();
 
-        // Lock wraps the write — same pattern as create()
-        return lockService.executeWithLock(eventId, () -> {
-            // Second load inside the lock — fresh state, active session
+
+        return lockService.executeWithLock(eventId, () -> tx.execute(status -> {
+            LocalDateTime now = LocalDateTime.now();
             Booking booking = bookingRepository.findByBookingRefWithDetails(reference)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Booking not found: " + reference));
@@ -107,30 +115,16 @@ public class BookingService {
             if (booking.getStatus() == BookingStatus.CANCELLED) {
                 throw new IllegalStateException("Booking is already cancelled");
             }
-
-            Event event = eventRepository.findById(eventId)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Event no longer exists"));
-
-            if (!event.getEventDate().isAfter(LocalDateTime.now())) {
-                throw new IllegalStateException(
-                        "Past event bookings cannot be cancelled");
+            if(!booking.getEvent().getEventDate().isAfter(now)){
+                throw new IllegalStateException("Past event bookings cannot be cancelled");
             }
-
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.setCancelledAt(LocalDateTime.now());
-            event.setAvailableSeats(Math.min(
-                    event.getTotalSeats(),
-                    event.getAvailableSeats() + booking.getSeatsBooked()));
-            if (event.getStatus() == Status.SOLD_OUT) {
-                event.setStatus(Status.UPCOMING);
+            if(bookingRepository.claimForCancel(booking.getId(),now)==0){
+                throw new IllegalStateException("Booking is already cancelled");
             }
-
-            eventRepository.save(event);
-            log.info("Booking cancelled: {} seats restored: {}",
-                    reference, booking.getSeatsBooked());
-            return BookingDto.Response.from(bookingRepository.save(booking));
-        });
+            eventRepository.releaseSeats(eventId,booking.getSeatsBooked(),now);
+            log.info("Booking cancelled: {} seats restored: {}",reference,booking.getSeatsBooked());
+            return BookingDto.Response.from(bookingRepository.findByBookingRefWithDetails(reference).orElseThrow());
+        }));
     }
 
 
@@ -191,13 +185,6 @@ public class BookingService {
     }
 
 
-    @Transactional
-    BookingDto.Response createForTest(BookingDto.CreateRequest request, User user) {
-        return lockService.executeWithLock(
-                request.getEventId(),
-                () -> processCreate(request, user)
-        );
-    }
 
     private void requireOwnerOrAdmin(User user) {
         Authentication auth = authentication();

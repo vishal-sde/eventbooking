@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -52,7 +53,7 @@ class EventServiceTest {
                 .eventDate(LocalDateTime.now().plusDays(30))
                 .totalSeats(100)
                 .availableSeats(100)
-                .ticketPrice(500.0)
+                .ticketPrice(new BigDecimal("500.0"))
                 .status(Status.UPCOMING)
                 .build();
 
@@ -63,7 +64,7 @@ class EventServiceTest {
                 .eventDate(LocalDateTime.now().plusDays(10))
                 .totalSeats(50)
                 .availableSeats(50)
-                .ticketPrice(200.0)
+                .ticketPrice(new BigDecimal("200.0"))
                 .status(Status.CANCELLED)
                 .build();
     }
@@ -82,7 +83,7 @@ class EventServiceTest {
                     .venue("Stadium")
                     .eventDate(LocalDateTime.now().plusDays(30))
                     .totalSeats(200)
-                    .ticketPrice(750.0)
+                    .ticketPrice(new BigDecimal("750.0"))
                     .build();
 
             // Tell mock: when save() is called with any Event, return upcomingEvent
@@ -106,7 +107,7 @@ class EventServiceTest {
                     .venue("Arena")
                     .eventDate(LocalDateTime.now().plusDays(30))
                     .totalSeats(100)
-                    .ticketPrice(500.0)
+                    .ticketPrice(new BigDecimal("500.0"))
                     .build();
 
             when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> {
@@ -131,7 +132,7 @@ class EventServiceTest {
                     .venue("  Arena  ")
                     .eventDate(LocalDateTime.now().plusDays(30))
                     .totalSeats(100)
-                    .ticketPrice(500.0)
+                    .ticketPrice(new BigDecimal("500.0"))
                     .build();
 
             when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> {
@@ -273,7 +274,7 @@ class EventServiceTest {
                     .eventDate(LocalDateTime.now().minusDays(1))
                     .totalSeats(100)
                     .availableSeats(0)
-                    .ticketPrice(100.0)
+                    .ticketPrice(new BigDecimal("100.0"))
                     .build();
 
             when(eventRepository.findByIdForUpdate(3L))
@@ -308,7 +309,7 @@ class EventServiceTest {
                     .name("Updated Name")
                     .venue("Updated Venue")
                     .eventDate(LocalDateTime.now().plusDays(60))
-                    .ticketPrice(999.0)
+                    .ticketPrice(new BigDecimal("999.0"))
                     .build();
 
             when(eventRepository.findById(1L)).thenReturn(Optional.of(upcomingEvent));
@@ -327,7 +328,7 @@ class EventServiceTest {
                     .name("New Name")
                     .venue("New Venue")
                     .eventDate(LocalDateTime.now().plusDays(10))
-                    .ticketPrice(100.0)
+                    .ticketPrice(new BigDecimal("100.0"))
                     .build();
 
             when(eventRepository.findById(2L)).thenReturn(Optional.of(cancelledEvent));

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class BookingDto {
@@ -43,7 +44,7 @@ public class BookingDto {
         private Long eventId;
         private String eventName;
         private Integer seatsBooked;
-        private Double totalAmount;
+        private BigDecimal totalAmount;
         private BookingStatus status;
         private LocalDateTime bookedAt;
         private LocalDateTime cancelledAt;

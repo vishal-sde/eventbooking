@@ -520,7 +520,7 @@ function renderBookings() {
 
     $("#confirmedCount").textContent = confirmed.length;
     $("#seatCount").textContent = confirmed.reduce((t, b) => t + b.seatsBooked, 0);
-    $("#spentAmount").textContent = money.format(confirmed.reduce((t, b) => t + b.totalAmount, 0));
+    $("#spentAmount").textContent = money.format(confirmed.reduce((t, b) => t + Math.round(b.totalAmount * 100), 0) / 100);
 
     const markup = !state.bookings.length
         ? `<div class="empty-state"><strong>No bookings yet</strong><span>Your confirmed experiences will appear here.</span></div>`

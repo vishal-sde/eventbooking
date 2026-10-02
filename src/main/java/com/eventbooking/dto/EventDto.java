@@ -6,6 +6,7 @@ import com.eventbooking.entity.Status;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class EventDto {
@@ -34,8 +35,9 @@ public class EventDto {
         private Integer totalSeats;
 
         @NotNull(message = "Ticket price is required")
-        @DecimalMin(value = "0.0",message = "Price cannot be negative")
-        private Double ticketPrice;
+        @DecimalMin(value = "0.00",message = "Price cannot be negative")
+        @Digits(integer = 10,fraction = 2,message = "Price must have at most 2 decimal places")
+        private BigDecimal ticketPrice;
 
         private Category category;
 
@@ -66,7 +68,8 @@ public class EventDto {
 
         @NotNull(message = "Ticket price is required")
         @DecimalMin(value = "0.0", message = "Price cannot be negative")
-        private Double ticketPrice;
+        @Digits(integer = 10,fraction = 2,message = "Price must have at most 2 places")
+        private BigDecimal ticketPrice;
 
         private Category category;
 
@@ -91,7 +94,7 @@ public class EventDto {
         private LocalDateTime eventDate;
         private Integer totalSeats;
         private Integer availableSeats;
-        private Double ticketPrice;
+        private BigDecimal ticketPrice;
         private Status status;
         private Category category;
         private String imageUrl;

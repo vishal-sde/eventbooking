@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -21,7 +20,7 @@ public class DistributedLockService {
 
     private final RedissonClient redissonClient;
 
-    @Transactional
+
     public <T> T executeWithLock(Long eventId, Supplier<T> supplier) {
         String lockKey = LOCK_PREFIX + eventId;
         RLock lock = redissonClient.getLock(lockKey);

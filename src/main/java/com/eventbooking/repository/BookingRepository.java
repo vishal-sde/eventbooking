@@ -4,6 +4,7 @@ import com.eventbooking.entity.Booking;
 import com.eventbooking.entity.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -30,4 +31,28 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
     List<Booking> findByUserIdWithDetails(@Param("userId") Long userId);
     @Query("SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.event ORDER BY b.bookedAt DESC")
     List<Booking> findAllWithDetails();
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update Booking b
+       set b.status = com.eventbooking.entity.BookingStatus.CANCELLED,
+           b.cancelledAt = :now
+     where b.id = :id
+       and b.status in (com.eventbooking.entity.BookingStatus.PENDING,
+                        com.eventbooking.entity.BookingStatus.CONFIRMED)
+    """)
+    int claimForCancel(@Param("id") Long id, @Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update Booking b
+       set b.status = com.eventbooking.entity.BookingStatus.CANCELLED,
+           b.cancelledAt = :now
+     where b.id = :id
+       and b.status = com.eventbooking.entity.BookingStatus.PENDING
+       and b.expiresAt < :now
+    """)
+    int claimForExpiry(@Param("id") Long id, @Param("now") LocalDateTime now);
+
+    boolean existsByUserIdAndEventIdAndStatusIn(Long userId, Long eventId,
+                                                java.util.Collection<BookingStatus> statuses);
 }

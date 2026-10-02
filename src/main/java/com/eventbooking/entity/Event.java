@@ -4,6 +4,8 @@ package com.eventbooking.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,8 +38,8 @@ public class Event {
     @Column(nullable = false)
     private Integer availableSeats;
 
-    @Column(nullable = false)
-    private Double ticketPrice;
+    @Column(nullable = false,precision = 12,scale = 2)
+    private BigDecimal ticketPrice;
 
     @Enumerated(value = EnumType.STRING)
     @Column(nullable = false)

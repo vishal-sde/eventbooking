@@ -13,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -20,7 +21,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +42,7 @@ class BookingServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private DistributedLockService lockService;
     @Mock private EmailService emailService;
+    @Mock private TransactionTemplate tx;          // NEW
 
     @InjectMocks
     private BookingService bookingService;
@@ -63,7 +68,7 @@ class BookingServiceTest {
                 .eventDate(LocalDateTime.now().plusDays(30))
                 .totalSeats(100)
                 .availableSeats(10)
-                .ticketPrice(500.0)
+                .ticketPrice(new BigDecimal("500.00"))
                 .status(Status.UPCOMING)
                 .build();
 
@@ -73,11 +78,16 @@ class BookingServiceTest {
                 .user(testUser)
                 .event(testEvent)
                 .seatsBooked(2)
-                .totalAmount(1000.0)
+                .totalAmount(new BigDecimal("1000.00"))
                 .status(BookingStatus.PENDING)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .bookedAt(LocalDateTime.now())
                 .build();
+
+        // NEW: the TransactionTemplate is a mock, so make it simply run the callback.
+        // lenient() because tests that fail before reaching the transaction don't use it.
+        lenient().when(tx.execute(any())).thenAnswer(inv ->
+                inv.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
 
         setSecurityContext(testUser.getEmail(), "ROLE_USER");
     }
@@ -96,16 +106,7 @@ class BookingServiceTest {
     @DisplayName("create()")
     class Create {
 
-        /**
-         * Nested @BeforeEach runs ONLY for tests in this inner class.
-         * The Confirm tests won't see this stub, so no UnnecessaryStubbing.
-         *
-         * WHY THIS STUB IS NEEDED:
-         * bookingService.create() calls lockService.executeWithLock().
-         * Without this stub, the mock returns null and the supplier never runs.
-         * This stub makes the lock a no-op — it just executes the supplier immediately.
-         * This is correct for unit tests — we're testing booking logic, not the lock.
-         */
+        // Makes the lock a no-op: just run the supplier. We're testing booking logic, not Redis.
         @BeforeEach
         void stubLock() {
             when(lockService.executeWithLock(anyLong(), any(Supplier.class)))
@@ -120,10 +121,8 @@ class BookingServiceTest {
 
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
             when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.findByUserIdAndEventIdAndStatus(any(), any(), any()))
-                    .thenReturn(Optional.empty());
+            when(eventRepository.reserveSeats(eq(1L), eq(2), any(LocalDateTime.class))).thenReturn(1);
             when(bookingRepository.save(any(Booking.class))).thenReturn(testBooking);
-            when(eventRepository.save(any(Event.class))).thenReturn(testEvent);
 
             BookingDto.Response response = bookingService.create(request);
 
@@ -132,36 +131,37 @@ class BookingServiceTest {
             verify(bookingRepository).save(any(Booking.class));
         }
 
-
-
         @Test
-        @DisplayName("throws SeatsUnavailableException when not enough seats")
+        @DisplayName("throws SeatsUnavailableException when seats cannot be reserved")
         void throwsWhenNotEnoughSeats() {
             BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
                     .userId(1L).eventId(1L).seatsRequired(999).build();
 
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
             when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.findByUserIdAndEventIdAndStatus(any(), any(), any()))
-                    .thenReturn(Optional.empty());
+            // reserveSeats is not stubbed -> Mockito returns 0 -> "0 rows updated" -> no seats
 
             assertThatThrownBy(() -> bookingService.create(request))
                     .isInstanceOf(SeatsUnavailableException.class);
+
+            verify(bookingRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("throws DuplicateBookingException when user already booked")
+        @DisplayName("throws DuplicateBookingException when user already has an active booking")
         void throwsOnDuplicateBooking() {
             BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
                     .userId(1L).eventId(1L).seatsRequired(1).build();
 
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
             when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.findByUserIdAndEventIdAndStatus(any(), any(), any()))
-                    .thenReturn(Optional.of(testBooking));
+            when(bookingRepository.existsByUserIdAndEventIdAndStatusIn(eq(1L), eq(1L), any()))
+                    .thenReturn(true);
 
             assertThatThrownBy(() -> bookingService.create(request))
                     .isInstanceOf(DuplicateBookingException.class);
+
+            verify(eventRepository, never()).reserveSeats(any(), anyInt(), any());
         }
 
         @Test
@@ -177,50 +177,67 @@ class BookingServiceTest {
 
             assertThatThrownBy(() -> bookingService.create(request))
                     .isInstanceOf(IllegalStateException.class);
+
+            verify(eventRepository, never()).reserveSeats(any(), anyInt(), any());
+        }
+
+        // REPLACES "decrements availableSeats after booking": seats are now changed by
+        // an atomic SQL update, so we verify the update is requested with the right amount.
+        @Test
+        @DisplayName("reserves exactly the requested number of seats")
+        void reservesRequestedSeats() {
+            BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
+                    .userId(1L).eventId(1L).seatsRequired(3).build();
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
+            when(eventRepository.reserveSeats(eq(1L), eq(3), any(LocalDateTime.class))).thenReturn(1);
+            when(bookingRepository.save(any())).thenReturn(testBooking);
+
+            bookingService.create(request);
+
+            verify(eventRepository).reserveSeats(eq(1L), eq(3), any(LocalDateTime.class));
+        }
+
+        // REPLACES "marks event SOLD_OUT when last seat booked": the SOLD_OUT decision is now
+        // a SQL statement (markSoldOutIfEmpty), so we verify it is called after the reservation.
+        @Test
+        @DisplayName("checks for sold-out after reserving seats")
+        void checksSoldOutAfterReserving() {
+            BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
+                    .userId(1L).eventId(1L).seatsRequired(2).build();
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
+            when(eventRepository.reserveSeats(eq(1L), eq(2), any(LocalDateTime.class))).thenReturn(1);
+            when(bookingRepository.save(any())).thenReturn(testBooking);
+
+            bookingService.create(request);
+
+            var inOrder = inOrder(eventRepository, bookingRepository);
+            inOrder.verify(eventRepository).reserveSeats(eq(1L), eq(2), any(LocalDateTime.class));
+            inOrder.verify(bookingRepository).save(any(Booking.class));
+            inOrder.verify(eventRepository).markSoldOutIfEmpty(eq(1L), any(LocalDateTime.class));
         }
 
         @Test
-        @DisplayName("decrements availableSeats after booking")
-        void decrementsAvailableSeats() {
-            int initialSeats = testEvent.getAvailableSeats();
+        @DisplayName("total amount is calculated exactly with BigDecimal")
+        void calculatesTotalAmountExactly() {
+            testEvent.setTicketPrice(new BigDecimal("0.10"));
 
             BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
                     .userId(1L).eventId(1L).seatsRequired(3).build();
 
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
             when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.findByUserIdAndEventIdAndStatus(any(), any(), any()))
-                    .thenReturn(Optional.empty());
-            when(bookingRepository.save(any())).thenReturn(testBooking);
-            when(eventRepository.save(any(Event.class))).thenReturn(testEvent);
+            when(eventRepository.reserveSeats(eq(1L), eq(3), any(LocalDateTime.class))).thenReturn(1);
+            when(bookingRepository.save(any(Booking.class))).thenReturn(testBooking);
 
             bookingService.create(request);
 
-            verify(eventRepository).save(argThat(e ->
-                    e.getAvailableSeats() == initialSeats - 3
-            ));
-        }
-
-        @Test
-        @DisplayName("marks event SOLD_OUT when last seat booked")
-        void marksEventSoldOutWhenLastSeatBooked() {
-            testEvent.setAvailableSeats(2);
-
-            BookingDto.CreateRequest request = BookingDto.CreateRequest.builder()
-                    .userId(1L).eventId(1L).seatsRequired(2).build();
-
-            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-            when(eventRepository.findById(1L)).thenReturn(Optional.of(testEvent));
-            when(bookingRepository.findByUserIdAndEventIdAndStatus(any(), any(), any()))
-                    .thenReturn(Optional.empty());
-            when(bookingRepository.save(any())).thenReturn(testBooking);
-            when(eventRepository.save(any(Event.class))).thenReturn(testEvent);
-
-            bookingService.create(request);
-
-            verify(eventRepository).save(argThat(e ->
-                    e.getStatus() == Status.SOLD_OUT
-            ));
+            ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
+            verify(bookingRepository).save(captor.capture());
+            assertThat(captor.getValue().getTotalAmount()).isEqualByComparingTo("0.30");
         }
     }
 
@@ -232,19 +249,17 @@ class BookingServiceTest {
 
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-        // Fails before lock is even acquired — user lookup happens first
         assertThatThrownBy(() -> bookingService.create(request))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("99");
     }
 
     // ── confirm() ────────────────────────────────────────────────────────────
+    // Unchanged for now. These will change in Step 5 when confirm() is locked down.
 
     @Nested
     @DisplayName("confirm()")
     class Confirm {
-
-        // No @BeforeEach here — confirm() doesn't use lockService
 
         @Test
         @DisplayName("confirms a pending booking")

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,10 +24,10 @@ public class BookingExpiryJob {
 
     private final BookingRepository bookingRepository;
     private final EventRepository eventRepository;
+    private final TransactionTemplate tx;
 
 
     @Scheduled(fixedDelay = 60000)
-    @Transactional
     public void releaseExpiredBookings() {
         LocalDateTime now = LocalDateTime.now();
         List<Booking> expired = bookingRepository.findExpiredPendingBookings(now);
@@ -40,39 +41,20 @@ public class BookingExpiryJob {
 
         for (Booking booking : expired) {
             try {
-                releaseBooking(booking);
+                tx.execute(status -> { releaseBooking(booking,now); return null; });
             } catch (Exception e) {
-                // Don't let one failed release kill the entire batch
-                // Log it and continue with the rest
                 log.error("Failed to release expired booking {}: {}",
                         booking.getBookingRef(), e.getMessage());
             }
         }
     }
 
-    private void releaseBooking(Booking booking) {
-        Event event = booking.getEvent();
-
-        // Mark booking as cancelled
-        booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(LocalDateTime.now());
-
-        // Restore seats — cap at totalSeats to prevent overflow bugs
-        int restored = Math.min(
-                event.getTotalSeats(),
-                event.getAvailableSeats() + booking.getSeatsBooked()
-        );
-        event.setAvailableSeats(restored);
-
-        // If event was SOLD_OUT, it now has seats again
-        if (event.getStatus() == Status.SOLD_OUT) {
-            event.setStatus(Status.UPCOMING);
+    private void releaseBooking(Booking booking,LocalDateTime now) {
+        if (bookingRepository.claimForExpiry(booking.getId(),now)==0){
+            return;
         }
-
-        bookingRepository.save(booking);
-        eventRepository.save(event);
-
-        log.info("Released expired booking {} — {} seat(s) restored to event '{}'",
-                booking.getBookingRef(), booking.getSeatsBooked(), event.getName());
+        eventRepository.releaseSeats(booking.getEvent().getId(), booking.getSeatsBooked(),now);
+        log.info("Released expired booking {} — {} seat(s) restored",
+                booking.getBookingRef(), booking.getSeatsBooked());
     }
 }
