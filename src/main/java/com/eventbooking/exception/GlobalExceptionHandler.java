@@ -106,6 +106,16 @@ public class GlobalExceptionHandler {
                 "An unexpected error occurred. Please try again later.", request, Map.of());
     }
 
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    ResponseEntity<ApiError> idempotencyKeyReused(IdempotencyKeyReusedException ex, HttpServletRequest request) {
+        return response(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(RequestInProgressException.class)
+    ResponseEntity<ApiError> requestInProgress(RequestInProgressException ex, HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, ex.getMessage(), request, Map.of());
+    }
+
 
     private ResponseEntity<ApiError> response(HttpStatus status, String message,
                                               HttpServletRequest request, Map<String, String> errors) {

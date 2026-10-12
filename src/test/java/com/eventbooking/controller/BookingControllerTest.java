@@ -3,10 +3,12 @@ package com.eventbooking.controller;
 import com.eventbooking.config.SecurityConfig;
 import com.eventbooking.dto.BookingDto;
 import com.eventbooking.entity.BookingStatus;
+import com.eventbooking.exception.IdempotencyKeyReusedException;
 import com.eventbooking.exception.ResourceNotFoundException;
 import com.eventbooking.exception.SeatsUnavailableException;
 import com.eventbooking.repository.UserRepository;
 import com.eventbooking.service.BookingService;
+import com.eventbooking.service.IdempotencyService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -76,7 +78,6 @@ class BookingControllerTest {
     }
 
     // ── POST /api/bookings (create) ─────────────────────────────────────────
-
     @Nested
     @DisplayName("POST /api/bookings")
     class Create {
@@ -84,21 +85,40 @@ class BookingControllerTest {
         @Test
         @DisplayName("returns 201 when caller is authenticated")
         void createsBooking_whenAuthenticated() throws Exception {
-            when(bookingService.create(any(BookingDto.CreateRequest.class))).thenReturn(sampleResponse());
+            when(bookingService.createIdempotent(any(BookingDto.CreateRequest.class), any()))
+                    .thenReturn(new IdempotencyService.Result<>(sampleResponse(), false));
 
             mockMvc.perform(post("/api/bookings")
                             .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(validCreateRequest())))
                     .andExpect(status().isCreated())
+                    .andExpect(header().string("Idempotent-Replayed", "false"))
                     .andExpect(jsonPath("$.bookingRef").value("BK-ABC12345"))
                     .andExpect(jsonPath("$.status").value("PENDING"));
+        }
+
+        @Test
+        @DisplayName("marks the response as replayed when the service says it was a retry")
+        void marksReplayedResponses() throws Exception {
+            when(bookingService.createIdempotent(any(BookingDto.CreateRequest.class), any()))
+                    .thenReturn(new IdempotencyService.Result<>(sampleResponse(), true));
+
+            mockMvc.perform(post("/api/bookings")
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
+                            .contentType("application/json")
+                            .content(objectMapper.writeValueAsString(validCreateRequest())))
+                    .andExpect(status().isCreated())
+                    .andExpect(header().string("Idempotent-Replayed", "true"));
         }
 
         @Test
         @DisplayName("returns 401 when caller is not authenticated")
         void rejectsCreate_whenAnonymous() throws Exception {
             mockMvc.perform(post("/api/bookings")
+                            .header("Idempotency-Key", "test-key-12345")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(validCreateRequest())))
                     .andExpect(status().isUnauthorized());
@@ -113,6 +133,7 @@ class BookingControllerTest {
 
             mockMvc.perform(post("/api/bookings")
                             .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(invalid)))
                     .andExpect(status().isBadRequest())
@@ -126,11 +147,12 @@ class BookingControllerTest {
         @Test
         @DisplayName("returns 409 when not enough seats are available")
         void returns409_whenSeatsUnavailable() throws Exception {
-            when(bookingService.create(any(BookingDto.CreateRequest.class)))
+            when(bookingService.createIdempotent(any(BookingDto.CreateRequest.class), any()))
                     .thenThrow(new SeatsUnavailableException("Only 1 seats are available"));
 
             mockMvc.perform(post("/api/bookings")
                             .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(validCreateRequest())))
                     .andExpect(status().isConflict())
@@ -140,14 +162,29 @@ class BookingControllerTest {
         @Test
         @DisplayName("returns 403 when caller tries to book on another user's behalf")
         void returns403_whenNotOwner() throws Exception {
-            when(bookingService.create(any(BookingDto.CreateRequest.class)))
+            when(bookingService.createIdempotent(any(BookingDto.CreateRequest.class), any()))
                     .thenThrow(new AccessDeniedException("You cannot manage another user's booking"));
 
             mockMvc.perform(post("/api/bookings")
                             .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
                             .contentType("application/json")
                             .content(objectMapper.writeValueAsString(validCreateRequest())))
                     .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("returns 422 when the key was already used with a different request")
+        void returns422_whenKeyReused() throws Exception {
+            when(bookingService.createIdempotent(any(BookingDto.CreateRequest.class), any()))
+                    .thenThrow(new IdempotencyKeyReusedException("Key already used with a different request"));
+
+            mockMvc.perform(post("/api/bookings")
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                            .header("Idempotency-Key", "test-key-12345")
+                            .contentType("application/json")
+                            .content(objectMapper.writeValueAsString(validCreateRequest())))
+                    .andExpect(status().isUnprocessableEntity());
         }
     }
 
@@ -165,7 +202,7 @@ class BookingControllerTest {
             when(bookingService.confirm("BK-ABC12345")).thenReturn(confirmed);
 
             mockMvc.perform(post("/api/bookings/BK-ABC12345/confirm")
-                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("CONFIRMED"));
         }
@@ -177,7 +214,7 @@ class BookingControllerTest {
                     .thenThrow(new IllegalStateException("Booking has expired. Please book again."));
 
             mockMvc.perform(post("/api/bookings/BK-ABC12345/confirm")
-                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                     .andExpect(status().isBadRequest());
         }
 
@@ -188,8 +225,17 @@ class BookingControllerTest {
                     .thenThrow(new ResourceNotFoundException("Booking not found: BK-MISSING"));
 
             mockMvc.perform(post("/api/bookings/BK-MISSING/confirm")
-                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                     .andExpect(status().isNotFound());
+        }
+        @Test
+        @DisplayName("returns 403 when a normal user tries to confirm (no payment yet)")
+        void returns403_whenNotAdmin() throws Exception {
+            mockMvc.perform(post("/api/bookings/BK-ABC12345/confirm")
+                            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                    .andExpect(status().isForbidden());
+
+            verify(bookingService, never()).confirm(any());
         }
     }
 

@@ -115,11 +115,9 @@ public class EventService {
             throw new IllegalStateException("A completed event cannot be cancelled");
         }
         event.setStatus(Status.CANCELLED);
-        bookingRepository.findByEventIdAndStatus(id, BookingStatus.CONFIRMED).forEach(booking -> {
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.setCancelledAt(java.time.LocalDateTime.now());
-        });
-        return EventDto.Response.from(eventRepository.save(event));
+        Event saved = eventRepository.save(event);
+        bookingRepository.cancelActiveForEvent(id,java.time.LocalDateTime.now());
+        return EventDto.Response.from(saved);
     }
 
     @Transactional(readOnly = true)

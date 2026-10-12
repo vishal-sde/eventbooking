@@ -811,10 +811,27 @@ $("#resendResetBtn").addEventListener("click", async () => {
     finally { setTimeout(() => { button.disabled = false; }, 5000); }
 });
 
+let bookingAttempt = null;
+
+function idempotencyKeyFor(eventId, seats) {
+    const signature = `${eventId}:${seats}`;
+    if (!bookingAttempt || bookingAttempt.signature !== signature) {
+        bookingAttempt = { signature, key: crypto.randomUUID() };
+    }
+    return bookingAttempt.key;
+}
+
 $("#bookingForm").addEventListener("submit", async event => {
     event.preventDefault(); const form = event.currentTarget; setBusy(form, true);
     try {
-        await api("/api/bookings", { method: "POST", body: JSON.stringify({ userId: state.user.id, eventId: Number(form.elements.eventId.value), seatsRequired: Number(form.elements.seatsRequired.value) }) });
+        const eventId = Number(form.elements.eventId.value);
+        const seats = Number(form.elements.seatsRequired.value);
+        await api("/api/bookings", {
+            method: "POST",
+            headers: { "Idempotency-Key": idempotencyKeyFor(eventId, seats) },
+            body: JSON.stringify({ userId: state.user.id, eventId, seatsRequired: seats })
+        });
+        bookingAttempt = null;
         closeModals(); toast("Seats held for 5 minutes - confirm to secure your booking"); await Promise.all([loadBookings(), loadEvents()]);
     } catch (error) { toast(error.message, "error"); }
     finally { setBusy(form, false); }

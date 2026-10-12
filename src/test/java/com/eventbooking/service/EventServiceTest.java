@@ -249,18 +249,17 @@ class EventServiceTest {
     class Cancel {
 
         @Test
-        @DisplayName("cancels an upcoming event")
+        @DisplayName("cancels an upcoming event and all its active bookings")
         void cancelsUpcomingEvent() {
             when(eventRepository.findByIdForUpdate(1L))
                     .thenReturn(Optional.of(upcomingEvent));
             when(eventRepository.save(any(Event.class))).thenReturn(upcomingEvent);
-            when(bookingRepository.findByEventIdAndStatus(any(), any()))
-                    .thenReturn(List.of());
 
             EventDto.Response response = eventService.cancel(1L);
 
             assertThat(response).isNotNull();
             verify(eventRepository).save(argThat(e -> e.getStatus() == Status.CANCELLED));
+            verify(bookingRepository).cancelActiveForEvent(eq(1L), any(LocalDateTime.class));
         }
 
         @Test

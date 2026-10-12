@@ -18,11 +18,16 @@ public class BookingController {
     private final BookingService bookingService;
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("isAuthenticated()")
-    public BookingDto.Response create(@Valid @RequestBody BookingDto.CreateRequest request) {
-        return bookingService.create(request);
+    public ResponseEntity<BookingDto.Response> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody BookingDto.CreateRequest request) {
+        var result = bookingService.createIdempotent(request, idempotencyKey);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Idempotent-Replayed", String.valueOf(result.replayed()))
+                .body(result.body());
     }
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{reference}/confirm")
     public ResponseEntity<BookingDto.Response> confirm(@PathVariable String reference) {
         return ResponseEntity.ok(bookingService.confirm(reference));

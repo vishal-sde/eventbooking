@@ -32,6 +32,7 @@ public class BookingService {
     private final DistributedLockService lockService;
     private final EmailService emailService;
     private final TransactionTemplate tx;
+    private final IdempotencyService idempotencyService;
 
 
     public BookingDto.Response create(BookingDto.CreateRequest request) {
@@ -43,6 +44,23 @@ public class BookingService {
 
         return lockService.executeWithLock(request.getEventId(),
                 () -> tx.execute(status ->  processCreate(request, user)));
+    }
+
+    private static final java.util.regex.Pattern IDEMPOTENCY_KEY =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{8,100}$");
+
+    public IdempotencyService.Result<BookingDto.Response> createIdempotent(
+            BookingDto.CreateRequest request, String idempotencyKey) {
+        if (idempotencyKey == null || !IDEMPOTENCY_KEY.matcher(idempotencyKey).matches()) {
+            throw new IllegalStateException(
+                    "Idempotency-Key header is required (8-100 characters: letters, digits, - or _)");
+        }
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + request.getUserId()));
+        requireOwnerOrAdmin(user);   // authorize BEFORE touching idempotency state
+
+        return idempotencyService.execute(user.getId(), "POST /api/bookings", idempotencyKey,
+                request, BookingDto.Response.class, () -> create(request));
     }
 
 
@@ -61,7 +79,7 @@ public class BookingService {
             throw new IllegalStateException("This event is not open for booking");
         }
         if(bookingRepository.existsByUserIdAndEventIdAndStatusIn(
-                user.getId(),event.getId(),List.of(BookingStatus.PENDING,BookingStatus.CONFIRMED))){
+                user.getId(),event.getId(),BookingStatus.SEAT_HOLDING)){
             throw new DuplicateBookingException("You already have an active booking for this event");
         }
         if (bookingRepository.findByUserIdAndEventIdAndStatus(
@@ -161,8 +179,7 @@ public class BookingService {
     @Transactional
     public BookingDto.Response confirm(String bookingRef) {
         Booking booking = bookingRepository.findByBookingRefWithDetails(bookingRef)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Booking not found: " + bookingRef));
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingRef));
         requireOwnerOrAdmin(booking.getUser());
 
         if (booking.getStatus() == BookingStatus.CANCELLED) {
@@ -171,15 +188,17 @@ public class BookingService {
         if (booking.getStatus() == BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Booking is already confirmed");
         }
-        if (LocalDateTime.now().isAfter(booking.getExpiresAt())) {
-            throw new IllegalStateException(
-                    "Booking has expired. Please book again.");
+        if (booking.getExpiresAt() == null || LocalDateTime.now().isAfter(booking.getExpiresAt())) {
+            throw new IllegalStateException("Booking has expired. Please book again.");
         }
 
-        booking.setStatus(BookingStatus.CONFIRMED);
-        booking.setExpiresAt(null); // clear expiry once confirmed
+
+        if (bookingRepository.confirmIfActive(booking.getId(), LocalDateTime.now()) == 0) {
+            throw new IllegalStateException("Booking has expired or was cancelled. Please book again.");
+        }
+
+        Booking saved = bookingRepository.findByBookingRefWithDetails(bookingRef).orElseThrow();
         log.info("Booking confirmed: {}", bookingRef);
-        Booking saved = bookingRepository.save(booking);
         emailService.sendBookingConfirmation(saved);
         return BookingDto.Response.from(saved);
     }

@@ -266,14 +266,13 @@ class BookingServiceTest {
         void confirmsPendingBooking() {
             when(bookingRepository.findByBookingRefWithDetails("BK-TEST001"))
                     .thenReturn(Optional.of(testBooking));
-            when(bookingRepository.save(any(Booking.class))).thenReturn(testBooking);
+            when(bookingRepository.confirmIfActive(eq(1L), any(LocalDateTime.class)))
+                    .thenReturn(1);
 
             BookingDto.Response response = bookingService.confirm("BK-TEST001");
 
             assertThat(response).isNotNull();
-            verify(bookingRepository).save(argThat(b ->
-                    b.getStatus() == BookingStatus.CONFIRMED
-            ));
+            verify(bookingRepository).confirmIfActive(eq(1L), any(LocalDateTime.class));
         }
 
         @Test

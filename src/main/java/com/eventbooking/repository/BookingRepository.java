@@ -23,7 +23,7 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
    List<Booking> findByUserIdOrderByBookedAtDesc(Long userId);
    List<Booking> findAllByOrderByBookedAtDesc();
    List<Booking> findByEventIdAndStatus(Long eventId, BookingStatus status);
-   @Query("SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.event WHERE b.status = 'PENDING' AND b.expiresAt < :now")
+   @Query("SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.event WHERE b.status in( 'PENDING','PAYMENT_PENDING') AND b.expiresAt < :now")
    List<Booking> findExpiredPendingBookings(@Param("now")LocalDateTime now);
    @Query("SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.event WHERE b.bookingRef = :ref")
    Optional<Booking> findByBookingRefWithDetails(@Param("ref") String ref);
@@ -38,6 +38,7 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
            b.cancelledAt = :now
      where b.id = :id
        and b.status in (com.eventbooking.entity.BookingStatus.PENDING,
+                        com.eventbooking.entity.BookingStatus.PAYMENT_PENDING,
                         com.eventbooking.entity.BookingStatus.CONFIRMED)
     """)
     int claimForCancel(@Param("id") Long id, @Param("now") LocalDateTime now);
@@ -48,11 +49,37 @@ public interface BookingRepository extends JpaRepository<Booking,Long> {
        set b.status = com.eventbooking.entity.BookingStatus.CANCELLED,
            b.cancelledAt = :now
      where b.id = :id
-       and b.status = com.eventbooking.entity.BookingStatus.PENDING
+       and b.status in (com.eventbooking.entity.BookingStatus.PENDING,
+                        com.eventbooking.entity.BookingStatus.PAYMENT_PENDING)
        and b.expiresAt < :now
     """)
     int claimForExpiry(@Param("id") Long id, @Param("now") LocalDateTime now);
 
     boolean existsByUserIdAndEventIdAndStatusIn(Long userId, Long eventId,
                                                 java.util.Collection<BookingStatus> statuses);
+    // Atomic confirm: succeeds only if still active AND not expired. Closes the race with the expiry job.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update Booking b
+       set b.status = com.eventbooking.entity.BookingStatus.CONFIRMED,
+           b.expiresAt = null
+     where b.id = :id
+       and b.status in (com.eventbooking.entity.BookingStatus.PENDING,
+                        com.eventbooking.entity.BookingStatus.PAYMENT_PENDING)
+       and b.expiresAt > :now
+    """)
+    int confirmIfActive(@Param("id") Long id, @Param("now") LocalDateTime now);
+
+    // Used when an event is cancelled: every live booking of that event is cancelled in one statement.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update Booking b
+       set b.status = com.eventbooking.entity.BookingStatus.CANCELLED,
+           b.cancelledAt = :now
+     where b.event.id = :eventId
+       and b.status in (com.eventbooking.entity.BookingStatus.PENDING,
+                        com.eventbooking.entity.BookingStatus.PAYMENT_PENDING,
+                        com.eventbooking.entity.BookingStatus.CONFIRMED)
+    """)
+    int cancelActiveForEvent(@Param("eventId") Long eventId, @Param("now") LocalDateTime now);
 }

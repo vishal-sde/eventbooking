@@ -5,19 +5,19 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
-@Testcontainers
-public class AbstractIntegrationTest {
+public abstract class AbstractIntegrationTest {
 
-    @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
-
-    @Container
     static final GenericContainer<?> REDIS =
             new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+
+    static {
+        MYSQL.start();
+        REDIS.start();
+        // No stop(): Testcontainers cleans them up when the test JVM exits.
+    }
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
